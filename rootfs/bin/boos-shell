@@ -1,0 +1,51 @@
+#!/bin/sh
+
+echo "BoOS shell started."
+echo "Type 'help' to see commands."
+
+while true
+do
+    printf "boos> "
+    read cmd
+
+    case "$cmd" in
+        help)
+            echo "Available commands:"
+            echo "  help      - show this help"
+            echo "  status    - show system status"
+            echo "  shell     - enter raw BusyBox shell"
+            echo "  reboot    - reboot system"
+            echo "  poweroff  - stop system"
+            ;;
+
+        status)
+            echo "BoOS substrate status:"
+            echo "  kernel: $(uname -r)"
+            echo "  uptime: $(cat /proc/uptime | cut -d ' ' -f 1) seconds"
+            echo "  pid: $$"
+            ;;
+
+        shell)
+            echo "Entering raw shell. Type 'exit' to return."
+            /bin/sh
+            ;;
+
+        reboot)
+            echo "Rebooting..."
+            reboot -f
+            ;;
+
+        poweroff|exit|quit)
+            echo "Powering off..."
+            poweroff -f
+            ;;
+
+        "")
+            ;;
+
+        *)
+            echo "Unknown command: $cmd"
+            echo "Type 'help'."
+            ;;
+    esac
+done
