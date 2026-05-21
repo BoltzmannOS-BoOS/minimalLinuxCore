@@ -1,0 +1,12 @@
+#!/bin/sh
+
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+echo "================================"
+echo " minimalLinuxCore booted"
+echo " Welcome to BoOS substrate v0"
+echo "================================"
+
+exec /bin/sh
