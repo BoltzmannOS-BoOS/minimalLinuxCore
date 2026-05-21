@@ -6,7 +6,7 @@ mount -t devtmpfs none /dev
 
 echo "================================"
 echo " minimalLinuxCore booted"
-echo " Welcome to BoOS substrate v0"
+echo " BoOS substrate v0"
 echo "================================"
 
 exec /bin/sh
