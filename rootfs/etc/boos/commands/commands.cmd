@@ -1,0 +1,4 @@
+name=commands
+capability=allow_commands
+description=list registered commands
+exec=__builtin_commands

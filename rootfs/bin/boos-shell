@@ -1,146 +1,9 @@
 #!/bin/sh
 
 LOG_FILE="/var/log/boos.log"
-CAP_FILE="/etc/boos/capabilities.conf"
-CMD_DIR="/etc/boos/commands"
 
 log_msg() {
-    echo "[boos] $1" >> "$LOG_FILE"
-}
-
-get_cap_value() {
-    key="$1"
-
-    if [ ! -f "$CAP_FILE" ]; then
-        echo "0"
-        return
-    fi
-
-    grep "^$key=" "$CAP_FILE" | cut -d '=' -f 2
-}
-
-require_cap() {
-    key="$1"
-    name="$2"
-
-    value="$(get_cap_value "$key")"
-
-    if [ "$value" != "1" ]; then
-        echo "Permission denied: missing capability '$name'"
-        log_msg "denied: $name"
-        return 1
-    fi
-
-    return 0
-}
-
-get_field() {
-    file="$1"
-    key="$2"
-    grep "^$key=" "$file" | cut -d '=' -f 2-
-}
-
-find_cmd_file() {
-    name="$1"
-
-    for f in "$CMD_DIR"/*.cmd
-    do
-        [ -f "$f" ] || continue
-        cmd_name="$(get_field "$f" name)"
-        if [ "$cmd_name" = "$name" ]; then
-            echo "$f"
-            return
-        fi
-    done
-}
-
-list_commands() {
-    echo "Available registered commands:"
-
-    for f in "$CMD_DIR"/*.cmd
-    do
-        [ -f "$f" ] || continue
-        name="$(get_field "$f" name)"
-        desc="$(get_field "$f" description)"
-        echo "  $name - $desc"
-    done
-}
-
-show_help() {
-    echo "BoOS shell commands:"
-    echo "  help              show help"
-    echo "  commands          list registered commands"
-    echo "  run <command>     run registered command"
-    echo "  status            shortcut for run status"
-    echo "  log               shortcut for run log"
-    echo "  caps              shortcut for run caps"
-    echo "  shell             shortcut for run shell"
-    echo "  poweroff          shortcut for run poweroff"
-}
-
-show_status() {
-    echo "BoOS substrate status:"
-    echo "  kernel: $(uname -r)"
-    echo "  uptime: $(cat /proc/uptime | cut -d ' ' -f 1) seconds"
-    echo "  pid: $$"
-}
-
-run_builtin_or_exec() {
-    exec_target="$1"
-
-    case "$exec_target" in
-        __builtin_help)
-            show_help
-            ;;
-
-        __builtin_status)
-            show_status
-            ;;
-
-        __builtin_log)
-            echo "BoOS command log:"
-            cat "$LOG_FILE"
-            ;;
-
-        __builtin_caps)
-            echo "BoOS capabilities:"
-            cat "$CAP_FILE"
-            ;;
-
-        __builtin_poweroff)
-            echo "Powering off..."
-            poweroff -f
-            ;;
-
-        *)
-            if [ -x "$exec_target" ]; then
-                "$exec_target"
-            else
-                echo "Executable not found or not executable: $exec_target"
-                return 1
-            fi
-            ;;
-    esac
-}
-
-run_registered_command() {
-    name="$1"
-
-    cmd_file="$(find_cmd_file "$name")"
-
-    if [ -z "$cmd_file" ]; then
-        echo "Unknown command: $name"
-        return 1
-    fi
-
-    cap="$(get_field "$cmd_file" capability)"
-    desc="$(get_field "$cmd_file" description)"
-    exec_target="$(get_field "$cmd_file" exec)"
-
-    require_cap "$cap" "$name" || return 1
-
-    log_msg "allowed: $name - $desc"
-    run_builtin_or_exec "$exec_target"
+    echo "[boos-shell] $1" >> "$LOG_FILE"
 }
 
 echo "BoOS shell started."
@@ -153,35 +16,27 @@ do
 
     [ -z "$line" ] && continue
 
-    log_msg "command: $line"
+    log_msg "input: $line"
 
     set -- $line
     cmd="$1"
     arg="$2"
 
     case "$cmd" in
-        help)
-            run_registered_command help
-            ;;
-
-        commands)
-            list_commands
-            ;;
-
         run)
             if [ -z "$arg" ]; then
                 echo "Usage: run <command>"
             else
-                run_registered_command "$arg"
+                /bin/boos-exec "$arg"
             fi
             ;;
 
-        status|log|caps|shell|poweroff)
-            run_registered_command "$cmd"
+        help|commands|status|log|caps|shell|poweroff)
+            /bin/boos-exec "$cmd"
             ;;
 
         exit|quit)
-            run_registered_command poweroff
+            /bin/boos-exec poweroff
             ;;
 
         *)
