@@ -1,9 +1,36 @@
 #!/bin/sh
 
 LOG_FILE="/var/log/boos.log"
+CAP_FILE="/etc/boos/capabilities.conf"
 
 log_cmd() {
     echo "[boos] command: $1" >> "$LOG_FILE"
+}
+
+get_cap() {
+    key="$1"
+
+    if [ ! -f "$CAP_FILE" ]; then
+        echo "0"
+        return
+    fi
+
+    grep "^$key=" "$CAP_FILE" | cut -d '=' -f 2
+}
+
+require_cap() {
+    key="$1"
+    name="$2"
+
+    value="$(get_cap "$key")"
+
+    if [ "$value" != "1" ]; then
+        echo "Permission denied: missing capability '$name'"
+        echo "[boos] denied: $name" >> "$LOG_FILE"
+        return 1
+    fi
+
+    return 0
 }
 
 echo "BoOS shell started."
@@ -18,16 +45,19 @@ do
 
     case "$cmd" in
         help)
+            require_cap "allow_help" "help" || continue
             echo "Available commands:"
             echo "  help      - show this help"
             echo "  status    - show system status"
             echo "  log       - show BoOS command log"
+            echo "  caps      - show capabilities"
             echo "  shell     - enter raw BusyBox shell"
             echo "  reboot    - reboot system"
             echo "  poweroff  - stop system"
             ;;
 
         status)
+            require_cap "allow_status" "status" || continue
             echo "BoOS substrate status:"
             echo "  kernel: $(uname -r)"
             echo "  uptime: $(cat /proc/uptime | cut -d ' ' -f 1) seconds"
@@ -35,21 +65,30 @@ do
             ;;
 
         log)
+            require_cap "allow_log" "log" || continue
             echo "BoOS command log:"
             cat "$LOG_FILE"
             ;;
 
+        caps)
+            echo "BoOS capabilities:"
+            cat "$CAP_FILE"
+            ;;
+
         shell)
+            require_cap "allow_shell" "shell" || continue
             echo "Entering raw shell. Type 'exit' to return."
             /bin/sh
             ;;
 
         reboot)
+            require_cap "allow_reboot" "reboot" || continue
             echo "Rebooting..."
             reboot -f
             ;;
 
         poweroff|exit|quit)
+            require_cap "allow_poweroff" "poweroff" || continue
             echo "Powering off..."
             poweroff -f
             ;;
