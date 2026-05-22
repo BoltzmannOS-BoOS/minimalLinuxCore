@@ -1,0 +1,11 @@
+#!/bin/sh
+
+LOG_FILE="/var/log/boos.log"
+
+echo "[boos-daemon] started" >> "$LOG_FILE"
+
+while true
+do
+    /bin/boos-process >/dev/null 2>&1
+    sleep 1
+done

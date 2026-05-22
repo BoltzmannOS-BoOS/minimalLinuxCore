@@ -4,9 +4,15 @@ mount -t proc none /proc
 mount -t sysfs none /sys
 mount -t devtmpfs none /dev
 
+mkdir -p /run/boos/requests
+mkdir -p /run/boos/results
+mkdir -p /var/log
+
 echo "================================"
 echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
 echo "================================"
+
+/bin/boos-daemon &
 
 exec /bin/boos-shell

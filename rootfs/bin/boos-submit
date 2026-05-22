@@ -1,0 +1,20 @@
+#!/bin/sh
+
+REQ_DIR="/run/boos/requests"
+LOG_FILE="/var/log/boos.log"
+
+mkdir -p "$REQ_DIR"
+
+if [ -z "$1" ]; then
+    echo "Usage: boos-submit <command>"
+    exit 1
+fi
+
+cmd="$1"
+id="$(cat /proc/uptime | cut -d ' ' -f 1 | tr -d '.')"
+file="$REQ_DIR/req-$id"
+
+echo "command=$cmd" > "$file"
+echo "[boos-submit] submitted: $cmd -> $file" >> "$LOG_FILE"
+
+echo "Submitted request: $file"

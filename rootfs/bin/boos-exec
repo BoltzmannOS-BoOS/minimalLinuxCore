@@ -68,13 +68,16 @@ list_commands() {
 
 show_help() {
     echo "BoOS commands:"
-    echo "  help       show help"
-    echo "  commands   list registered commands"
-    echo "  status     show system status"
-    echo "  log        show command log"
-    echo "  caps       show capabilities"
-    echo "  shell      enter raw BusyBox shell"
-    echo "  poweroff   power off system"
+    echo "  help                show help"
+    echo "  commands            list registered commands"
+    echo "  status              show system status"
+    echo "  log                 show command log"
+    echo "  caps                show capabilities"
+    echo "  submit <command>    submit command request"
+    echo "  process             process pending requests manually"
+    echo "  results             show request results"
+    echo "  shell               enter raw BusyBox shell"
+    echo "  poweroff            power off system"
 }
 
 show_status() {
@@ -84,8 +87,27 @@ show_status() {
     echo "  pid: $$"
 }
 
+show_results() {
+    echo "BoOS request results:"
+
+    found=0
+
+    for f in /run/boos/results/*.out
+    do
+        [ -f "$f" ] || continue
+        found=1
+        echo "----- $f -----"
+        cat "$f"
+    done
+
+    if [ "$found" = "0" ]; then
+        echo "No results."
+    fi
+}
+
 run_builtin_or_exec() {
     exec_target="$1"
+    arg1="$2"
 
     case "$exec_target" in
         __builtin_help)
@@ -110,6 +132,22 @@ run_builtin_or_exec() {
             cat "$CAP_FILE"
             ;;
 
+        __builtin_submit)
+            if [ -z "$arg1" ]; then
+                echo "Usage: submit <command>"
+                return 1
+            fi
+            /bin/boos-submit "$arg1"
+            ;;
+
+        __builtin_process)
+            /bin/boos-process
+            ;;
+
+        __builtin_results)
+            show_results
+            ;;
+
         __builtin_poweroff)
             echo "Powering off..."
             poweroff -f
@@ -128,6 +166,7 @@ run_builtin_or_exec() {
 
 run_registered_command() {
     name="$1"
+    arg1="$2"
 
     cmd_file="$(find_cmd_file "$name")"
 
@@ -143,12 +182,12 @@ run_registered_command() {
     require_cap "$cap" "$name" || return 1
 
     log_msg "allowed: $name - $desc"
-    run_builtin_or_exec "$exec_target"
+    run_builtin_or_exec "$exec_target" "$arg1"
 }
 
 if [ -z "$1" ]; then
-    echo "Usage: boos-exec <command>"
+    echo "Usage: boos-exec <command> [arg]"
     exit 1
 fi
 
-run_registered_command "$1"
+run_registered_command "$1" "$2"

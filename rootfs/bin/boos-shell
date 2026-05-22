@@ -31,7 +31,15 @@ do
             fi
             ;;
 
-        help|commands|status|log|caps|shell|poweroff)
+        submit)
+            if [ -z "$arg" ]; then
+                echo "Usage: submit <command>"
+            else
+                /bin/boos-exec submit "$arg"
+            fi
+            ;;
+
+        help|commands|status|log|caps|shell|poweroff|process|results)
             /bin/boos-exec "$cmd"
             ;;
 
