@@ -1,5 +1,11 @@
 #!/bin/sh
 
+LOG_FILE="/var/log/boos.log"
+
+log_cmd() {
+    echo "[boos] command: $1" >> "$LOG_FILE"
+}
+
 echo "BoOS shell started."
 echo "Type 'help' to see commands."
 
@@ -8,11 +14,14 @@ do
     printf "boos> "
     read cmd
 
+    log_cmd "$cmd"
+
     case "$cmd" in
         help)
             echo "Available commands:"
             echo "  help      - show this help"
             echo "  status    - show system status"
+            echo "  log       - show BoOS command log"
             echo "  shell     - enter raw BusyBox shell"
             echo "  reboot    - reboot system"
             echo "  poweroff  - stop system"
@@ -23,6 +32,11 @@ do
             echo "  kernel: $(uname -r)"
             echo "  uptime: $(cat /proc/uptime | cut -d ' ' -f 1) seconds"
             echo "  pid: $$"
+            ;;
+
+        log)
+            echo "BoOS command log:"
+            cat "$LOG_FILE"
             ;;
 
         shell)
