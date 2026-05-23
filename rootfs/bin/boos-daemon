@@ -2,10 +2,18 @@
 
 LOG_FILE="/var/log/boos.log"
 
+SHARED_REQ_DIR="/mnt/shared/requests"
+SHARED_RESULT_DIR="/mnt/shared/results"
+
 echo "[boos-daemon] started" >> "$LOG_FILE"
 
 while true
 do
     /bin/boos-process >/dev/null 2>&1
+
+    if [ -d "$SHARED_REQ_DIR" ]; then
+        /bin/boos-process "$SHARED_REQ_DIR" "$SHARED_RESULT_DIR" >/dev/null 2>&1
+    fi
+
     sleep 1
 done

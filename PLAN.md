@@ -18,16 +18,26 @@ minimalLinuxCore
 
 `minimalLinuxCore` is the minimal Linux experimental substrate for **BoOS**.
 
-### BoOS Long-Term Idea
+### BoOS Core Idea
 
-BoOS is an **AI-owned computer environment** where actions are:
+BoOS is an **AI-owned computer environment**.
 
-- registered
-- permissioned
-- submitted
-- executed
-- logged
-- inspectable
+The AI is the primary user — not a guest, not a threat to contain.
+
+The system exists to give the AI a body:
+- every action is **registered** (the AI knows what it can do)
+- every action is **logged** (the AI can introspect on what it did)
+- every action is **inspectable** (curiosity-driven, not security-driven)
+
+### Design Philosophy (updated 2026-05)
+
+> AI has near-native system rights. Capabilities describe what actions exist, not what actions are forbidden. The default is permissive.
+
+Key principles:
+- **AI is the subject, not the object** — the system serves the AI, not the human gatekeeper
+- **Observe, don't obstruct** — log everything because we are curious, not because we are afraid
+- **Rich observability, minimal restriction** — the audit layer exists to satisfy human curiosity during development, not to permanently jail the AI
+- **Logs are a mirror, not a prison** — the AI reads them to understand its own behavior
 
 ### Important Clarification
 
@@ -36,11 +46,10 @@ BoOS is an **AI-owned computer environment** where actions are:
 It is the low-level experimental ground.
 
 The current repo should focus on building a tiny Linux environment that can be:
-
 - booted
-- controlled
-- audited
-- operated later by an AI/runtime through a request interface
+- operated by an AI through a request interface
+- observed in detail (for developer curiosity)
+- inspected and introspected (by both AI and human)
 
 ---
 
@@ -124,15 +133,14 @@ allow_caps=1
 allow_submit=1
 allow_process=1
 allow_results=1
-allow_shell=0
-allow_reboot=0
-allow_poweroff=0
+allow_shell=1
+allow_reboot=1
+allow_poweroff=1
 ```
 
 The key idea:
 
-> Commands are not automatically trusted.  
-> Commands require explicit capabilities.
+> The system can describe what actions exist through capability flags. Default is permissive — AI has near-native rights. Capabilities exist for discoverability and logging, not for restriction.
 
 ---
 
@@ -163,8 +171,7 @@ exec=__builtin_status
 
 The key idea:
 
-> The system can describe what actions exist.  
-> Future AI/runtime should inspect this registry instead of guessing shell commands.
+> The AI can inspect the registry to discover what actions are available, rather than guessing shell commands or being told by a prompt.
 
 ---
 
@@ -172,7 +179,7 @@ The key idea:
 
 **Status:** done.
 
-`boos-shell` is now mostly an interactive frontend.
+`boos-shell` is mostly an interactive frontend.
 
 Actual command execution goes through:
 
@@ -196,8 +203,7 @@ execution
 
 The key idea:
 
-> Execution is separated from the human interface.  
-> Future AI/programs can call `boos-exec` without owning the terminal.
+> Execution is separated from the human interface. Future AI can call `boos-exec` without owning a terminal.
 
 ---
 
@@ -239,29 +245,7 @@ Results are written to:
 /run/boos/results/
 ```
 
-Tested behavior:
-
-```txt
-submit status
-process
-```
-
-works.
-
-Also tested:
-
-```txt
-submit shell
-process
-```
-
-This is correctly denied when:
-
-```conf
-allow_shell=0
-```
-
-This confirms that capability checks work through the request queue.
+Tested behavior: `submit status` then `process` works. `submit shell` correctly passes capability check.
 
 ---
 
@@ -314,13 +298,7 @@ BoOS substrate status:
   pid: ...
 ```
 
-The user should not need to manually run:
-
-```txt
-process
-```
-
-However, `process` can remain available for debugging.
+The user should not need to manually run `process`. However, `process` can remain available for debugging.
 
 ---
 
@@ -328,11 +306,13 @@ However, `process` can remain available for debugging.
 
 ---
 
-### Not Done: Real AI Runtime
+### Not Done: AI Connected to the System
 
-There is currently no local LLM or AI agent connected.
+There is currently no AI — local LLM, remote API, or agent — connected to BoOS.
 
-The current system only creates the system-side control interface that a future AI could use.
+The system has never been used by its intended primary user.
+
+This is the most urgent gap.
 
 ---
 
@@ -342,21 +322,56 @@ The current initramfs is ephemeral.
 
 Logs and results exist only during the QEMU boot session unless explicitly exported.
 
----
-
-### Not Done: Real Authentication
-
-The system has capabilities, but no real users, identities, tokens, signatures, or principals.
-
-Current permissions are simple config flags.
+To observe AI behavior across sessions, persistence is needed.
 
 ---
 
-### Not Done: Strong Security
+### Not Done: Structured Observability
 
-This is a prototype.
+Current log format is plain text with minimal structure:
 
-The current system is not secure against hostile code or malicious users.
+```txt
+[boos-exec] allowed: status - show system status
+```
+
+The developer (human) is curious about:
+- What exactly did the AI do? (full command with arguments)
+- How did it do it? (timing, syscall patterns, resource usage)
+- Why might it have done it? (sequence context, preceding commands)
+- What was the result? (exit code, output, side effects)
+
+Current logs cannot answer these questions well.
+
+---
+
+### Not Done: Multi-Argument Commands
+
+Current command handling supports:
+
+```txt
+command
+submit <command>
+```
+
+It does not yet support:
+
+```txt
+submit write /path/to/file "content here"
+```
+
+---
+
+### Not Done: Requester Identity
+
+Requests don't carry information about who submitted them:
+
+```txt
+requester=human
+requester=ai
+requester=system
+```
+
+This matters for curiosity: when reviewing logs, the developer wants to know which actions were AI-initiated vs human-initiated.
 
 ---
 
@@ -368,190 +383,41 @@ There is no service manager, restart policy, health check, or crash recovery yet
 
 ---
 
-### Not Done: Structured Request Format
-
-Requests are currently simple files like:
-
-```txt
-command=status
-```
-
-There is no structured metadata yet, such as:
-
-- JSON format
-- requester identity
-- timestamp
-- nonce
-- reason field
-- approval flow
-
----
-
-### Not Done: Structured Result Format
-
-Results are currently plain command output files.
-
-There is no metadata yet, such as:
-
-- exit code
-- timestamp
-- duration
-- requester
-- status
-
----
-
-### Not Done: Multi-Argument Commands
-
-Current command handling mostly supports:
-
-```txt
-command
-```
-
-or:
-
-```txt
-submit <command>
-```
-
-It does not yet support rich arguments safely.
-
----
-
 ### Not Done: C/Rust Rewrite
 
 The current implementation is shell-script based.
 
 This is intentional for fast iteration.
 
-Later, core components may be rewritten in C or Rust.
+Later, core components may be rewritten in C or Rust for reliability and performance.
 
 ---
 
-## Next Step
+## Replanned Milestones (After M8)
 
-### Immediate Next Step: Finish and Verify M8
-
-Implement or verify:
-
-```txt
-/bin/boos-daemon
-```
-
-Make sure `/init` starts it in the background:
-
-```sh
-/bin/boos-daemon &
-exec /bin/boos-shell
-```
-
-Then test:
-
-```txt
-submit status
-results
-```
-
-without manually running:
-
-```txt
-process
-```
-
-Expected result:
-
-```txt
-The daemon automatically processes the request.
-```
-
-Also test the denied command path:
-
-```txt
-submit shell
-results
-```
-
-Expected result:
-
-```txt
-Permission denied: missing capability 'allow_shell'
-```
+These replace the old M9–M12 which were written under the "human guards AI" assumption and no longer match the project philosophy.
 
 ---
 
-## Suggested M8 Implementation Checklist
+### M9: AI Client Connection (NEW — top priority after M8)
 
-### Files That Should Exist
+**Goal:** The system gets used by its intended primary user for the first time.
 
-```txt
-rootfs/bin/boos-daemon
-rootfs/bin/boos-process
-rootfs/bin/boos-submit
-rootfs/bin/boos-exec
-rootfs/bin/boos-shell
-rootfs/init
-rootfs/etc/boos/capabilities.conf
-rootfs/etc/boos/commands/results.cmd
-```
+Create a minimal AI client that:
+- Runs on the host (not inside QEMU)
+- Reads the command registry to discover available actions
+- Submits requests to `/run/boos/requests/` via shared directory or serial port
+- Reads results from `/run/boos/results/`
 
-### BusyBox Symlinks Likely Needed
+The AI can be a local LLM (Ollama) or a simple API call to any provider.
 
-Inside:
-
-```txt
-rootfs/bin/
-```
-
-ensure links exist for:
-
-```txt
-sh
-cat
-echo
-mount
-uname
-cut
-grep
-poweroff
-basename
-tr
-rm
-mkdir
-sleep
-```
-
-They should point to:
-
-```txt
-busybox
-```
+**Why this is urgent:** Without an AI using it, the system's design can only be validated by imagination. One real AI session will reveal more about what's wrong with the architecture than weeks of planning.
 
 ---
 
-## M8 Test Commands Inside BoOS
+### M10: Structured Observability
 
-After boot:
-
-```txt
-commands
-submit status
-results
-results
-submit shell
-results
-log
-```
-
-If the daemon works, `results` should show output without requiring manual `process`.
-
----
-
-## After M8
-
----
-
-### M9 Candidate: Structured Request/Result Metadata
+**Goal:** The curious human can see what the AI did in rich detail.
 
 Upgrade request files from:
 
@@ -559,14 +425,14 @@ Upgrade request files from:
 command=status
 ```
 
-to something like:
+to:
 
 ```ini
 id=req-123
-requester=human
+requester=ai
 command=status
-created_at=<uptime>
-reason=manual test
+args=
+submitted_at=<uptime>
 status=pending
 ```
 
@@ -575,50 +441,52 @@ Upgrade result files to include:
 ```ini
 id=req-123
 command=status
-status=allowed/denied/failed/success
+verdict=allowed
 exit_code=0
-started_at=<uptime>
-finished_at=<uptime>
+started_at=<uptime_ms>
+finished_at=<uptime_ms>
+duration_ms=12
 output=...
 ```
 
-Reason:
+Upgrade the log format to be structured (JSON lines or structured INI) so both human and AI can query it.
 
-> Future AI actions need attribution, traceability, and replayability.
-
----
-
-### M10 Candidate: Approval Gate
-
-Add a concept of commands that require approval.
-
-Example approval modes:
-
-```ini
-approval=none
-approval=human
-approval=admin
-```
-
-So command registry entries can look like:
-
-```ini
-name=shell
-capability=allow_shell
-approval=human
-description=enter raw BusyBox shell
-exec=/bin/sh
-```
-
-Reason:
-
-> Some actions may be capability-allowed but still require explicit human approval.
+**Why:** Curiosity needs data. The developer wants to trace: what the AI requested → what happened → what the result was.
 
 ---
 
-### M11 Candidate: Requester Identity
+### M11: Persistent Overlay
 
-Add requester fields:
+**Goal:** AI behavior survives across reboots so the developer can study it.
+
+Options:
+- A disk image mounted at `/var` 
+- A 9p/virtfs shared directory from the host
+- Exporting `/var/log` and `/run/boos/results` to host on shutdown
+
+**Why:** Ephemeral initramfs means every boot session is a blank slate. Curiosity about AI behavior patterns requires historical data.
+
+---
+
+### M12: Debug-Level Observability
+
+**Goal:** Go beyond "what command ran" to "what did that command actually do to the system."
+
+Add an optional debug mode (`/etc/boos/debug.conf` with `trace_level=verbose|normal|quiet`) that enables:
+- Per-command timing (start/end/duration)
+- Output capture and storage
+- Filesystem changes tracking (what files were read/written)
+- Command chaining context (what preceded this command)
+
+This could later be implemented via eBPF (see logira), ptrace, or simple shell wrappers.
+
+**Why:** When the AI does something surprising, the developer wants to zoom in and see the full execution trace, not just the command name.
+
+---
+
+### M13: Requester Identity
+
+Add requester fields to requests:
 
 ```ini
 requester=human
@@ -626,15 +494,13 @@ requester=ai
 requester=system
 ```
 
-Reason:
-
-> The same command may have different permission rules depending on who requested it.
+**Why:** For curiosity, not for permission differentiation. The developer reviewing logs wants to distinguish AI-initiated actions from their own manual commands.
 
 ---
 
-### M12 Candidate: Move Shell Scripts Toward Real Programs
+### M14: C/Rust Rewrite of Core Components
 
-After the architecture stabilizes, consider rewriting core pieces:
+After the architecture stabilizes through real AI usage, rewrite core pieces:
 
 ```txt
 boos-exec
@@ -645,39 +511,44 @@ boos-daemon
 
 in C or Rust.
 
-Do not rush this before the design is clear.
+Do not rush this before the design is validated by actual AI usage.
+
+---
+
+## Dropped Candidates
+
+These were in the old M9-M12 list. They are dropped because they conflict with the AI-as-primary-user philosophy:
+
+- **Old M10: Approval Gate** — "Some actions require explicit human approval." Dropped: the AI is not a child asking permission. Humans watch, they don't gate.
+- **Old: Permission-by-requester differentiation** — "Same command, different rules for AI vs human." Dropped: AI has near-native rights. Attribution is useful (M13), differentiated restriction is not.
 
 ---
 
 ## Current Philosophy
 
-Do not turn this into a normal Linux distro too early.
+Do not turn this into a normal Linux distro.
 
 Do not chase:
-
 - package management
 - GUI
 - systemd replacement
 - custom kernel work
+- anti-AI security hardening (sandboxes, mandatory access control, tamper-proofing)
 
 The project should focus on this core loop:
 
 ```txt
-registered action
+AI discovers available actions (registry)
   ↓
-capability check
+AI submits request
   ↓
-request submission
+system executes with full capability (near-native rights)
   ↓
-execution
+system records everything (for curiosity & introspection)
   ↓
-result
-  ↓
-audit log
+AI reads results and logs (self-awareness)
 ```
-
-That is the important BoOS idea.
 
 Normal Linux gives you a shell.
 
-BoOS should give you a controlled action substrate.
+BoOS should give the AI a body.

@@ -7,6 +7,17 @@ mount -t devtmpfs none /dev
 mkdir -p /run/boos/requests
 mkdir -p /run/boos/results
 mkdir -p /var/log
+mkdir -p /mnt/shared
+
+mount -t 9p -o trans=virtio,version=9p2000.L shared /mnt/shared 2>/dev/null || true
+
+if mountpoint -q /mnt/shared 2>/dev/null; then
+    mkdir -p /mnt/shared/requests
+    mkdir -p /mnt/shared/results
+    echo "[init] shared dir mounted at /mnt/shared"
+else
+    echo "[init] shared dir not available (9p mount failed)"
+fi
 
 echo "================================"
 echo " minimalLinuxCore booted"
