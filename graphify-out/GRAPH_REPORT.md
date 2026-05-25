@@ -1,133 +1,102 @@
-# Graph Report - .  (2026-05-26)
+# Graph Report - .  (2026-05-25)
 
 ## Corpus Check
-- Corpus is ~13,869 words - fits in a single context window. You may not need a graph.
+- cluster-only mode — file stats not available
 
 ## Summary
-- 152 nodes · 219 edges · 22 communities (12 shown, 10 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 29 edges (avg confidence: 0.89)
-- Token cost: 86,000 input · 46,879 output
+- 122 nodes · 174 edges · 16 communities (12 shown, 4 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 3 edges (avg confidence: 0.82)
+- Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `6f083686`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Logging Subsystem|Logging Subsystem]]
-- [[_COMMUNITY_AI Client & Boot Sequence|AI Client & Boot Sequence]]
-- [[_COMMUNITY_AI Client Python Module|AI Client Python Module]]
-- [[_COMMUNITY_Command Registry|Command Registry]]
-- [[_COMMUNITY_Gateway & Submit|Gateway & Submit]]
-- [[_COMMUNITY_Executor Builtins|Executor Builtins]]
-- [[_COMMUNITY_Capability System|Capability System]]
-- [[_COMMUNITY_Process Manager|Process Manager]]
-- [[_COMMUNITY_Verify Script|Verify Script]]
-- [[_COMMUNITY_Core Design Philosophy|Core Design Philosophy]]
-- [[_COMMUNITY_Build & Run Scripts|Build & Run Scripts]]
-- [[_COMMUNITY_build-rootfs.sh|build-rootfs.sh]]
-- [[_COMMUNITY_build-rust.sh|build-rust.sh]]
-- [[_COMMUNITY_run-qemu.sh|run-qemu.sh]]
-- [[_COMMUNITY_Verification|Verification]]
-- [[_COMMUNITY_Capability System Concept|Capability System Concept]]
-- [[_COMMUNITY_Persistent Overlay|Persistent Overlay]]
-- [[_COMMUNITY_Debug Observability|Debug Observability]]
-- [[_COMMUNITY_Config Paths|Config Paths]]
-- [[_COMMUNITY_Log Event|Log Event]]
-- [[_COMMUNITY_DeepSeek Repetition Bug|DeepSeek Repetition Bug]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `run_builtin()` - 15 edges
+1. `run_builtin()` - 13 edges
 2. `run_conversation()` - 11 edges
-3. `main()` - 11 edges
-4. `main()` - 10 edges
-5. `parse_kv_file()` - 10 edges
-6. `main()` - 8 edges
-7. `log_event()` - 7 edges
-8. `Conversation Loop` - 7 edges
-9. `check_enabled()` - 6 edges
-10. `load_commands()` - 6 edges
+3. `parse_kv_file()` - 7 edges
+4. `log_event()` - 7 edges
+5. `boos-exec (execution engine)` - 6 edges
+6. `M15 Rust Rewrite (boos multi-call binary)` - 6 edges
+7. `write_log_bytes()` - 5 edges
+8. `write_request()` - 4 edges
+9. `verify.sh script` - 4 edges
+10. `generate_id()` - 4 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Capability System (allow_*=0|1)` --references--> `check_enabled()`  [INFERRED]
-  .claude/skills/boos-dev.md → src/rust/src/exec.rs
-- `Two Execution Paths Architecture` --references--> `main()`  [INFERRED]
-  .claude/skills/boos-dev.md → src/rust/src/exec.rs
-- `File-Based IPC` --references--> `parse_kv_file()`  [INFERRED]
-  .claude/skills/boos-dev.md → src/rust/src/registry.rs
-- `Command Registry Pattern` --references--> `load_commands()`  [INFERRED]
-  .claude/skills/boos-dev.md → src/rust/src/registry.rs
-- `Two Execution Paths Architecture` --references--> `main()`  [INFERRED]
-  .claude/skills/boos-dev.md → src/rust/src/process.rs
+- `BoOS (README overview)` --semantically_similar_to--> `BoOS (AI-owned computer environment)`  [INFERRED] [semantically similar]
+  README.md → PLAN.md
+- `DeepSeek V4 Pro Repetition Bug Report` --references--> `M15 Rust Rewrite (boos multi-call binary)`  [INFERRED]
+  bug-reports/deepseek-v4-repetition-bug.md → PLAN.md
+- `QEMU/initramfs/init boot chain` --conceptually_related_to--> `minimalLinuxCore substrate`  [INFERRED]
+  README.md → PLAN.md
+- `BoOS Development Conventions (skill)` --references--> `boos-exec (execution engine)`  [EXTRACTED]
+  .claude/skills/boos-dev.md → PLAN.md
+- `M15 Issues Audit Report` --references--> `boos-submit (request writer)`  [EXTRACTED]
+  M15-ISSUES.md → PLAN.md
 
-## Hyperedges (group relationships)
-- **System Boot Sequence** — rootfs_init_init_script, bin_boos_supervisor_supervisor, bin_boos_shell_shell [EXTRACTED 1.00]
-- **Request Pipeline** — bin_mock_ai_driver_driver, bin_boos_daemon_daemon, ai_client_conversation_loop, plan_request_queue_concept [INFERRED 0.85]
-- **Rust Core Components** — plan_boos_exec, plan_boos_process, plan_boos_submit, plan_boos_gateway [EXTRACTED 1.00]
-- **Request Lifecycle Pipeline** — src_submit_main, src_process_main, src_exec_main, src_exec_run_builtin, src_exec_check_enabled, src_gateway_handle_connection [EXTRACTED 1.00]
-- **Registry and Capability System** — src_registry_command, src_registry_load_commands, src_registry_find_command, src_registry_is_enabled, src_registry_parse_kv_file, src_exec_check_enabled, boos_command_registry_pattern, boos_capability_system [EXTRACTED 1.00]
-- **Logging Subsystem** — src_log_write_log_bytes, src_log_event, src_log_allowed, src_log_denied, src_log_append_log_line, src_log_maybe_rotate_log, src_log_get_trace_level, src_log_tracelevel [EXTRACTED 1.00]
+## Communities (16 total, 4 thin omitted)
 
-## Communities (22 total, 10 thin omitted)
+### Community 0 - "Community 0"
+Cohesion: 0.15
+Nodes (13): append_log_line(), get_trace_level(), json_escape(), log(), log_allowed(), log_denied(), log_event(), log_unknown() (+5 more)
 
-### Community 0 - "Logging Subsystem"
-Cohesion: 0.14
-Nodes (15): Log Rotation and Pruning (A5), Limits and concurrency constants (MAX_OUTPUT_BYTES, MAX_LOG_LINE_LEN, MAX_GATEWAY_THREADS), append_log_line(), get_trace_level(), json_escape(), log(), log_allowed(), log_denied() (+7 more)
-
-### Community 1 - "AI Client & Boot Sequence"
-Cohesion: 0.10
-Nodes (21): BoOS AI Client, Command Registry Loader, Conversation Loop, Request Writer, Result Poller, OpenAI Tool Builder, BoOS Daemon, BoOS Shell (+13 more)
-
-### Community 2 - "AI Client Python Module"
+### Community 1 - "Community 1"
 Cohesion: 0.15
 Nodes (19): build_command_list_text(), build_tools(), cleanup_old_files(), ensure_dirs(), format_tool_result(), load_command_registry(), main(), make_client() (+11 more)
 
-### Community 3 - "Command Registry"
-Cohesion: 0.19
-Nodes (16): Command Registry Pattern, File-Based IPC, Command, find_command(), load_commands(), ParamDef, parse_kv_file(), parse_params() (+8 more)
+### Community 2 - "Community 2"
+Cohesion: 0.16
+Nodes (19): BoOS Development Conventions (skill), DeepSeek V4 Pro Repetition Bug Report, M15 Issues Audit Report, AI Client (ai-client.py), BoOS (AI-owned computer environment), boos-daemon (polling processor), boos-exec (execution engine), boos-gateway (TCP gateway) (+11 more)
 
-### Community 4 - "Gateway & Submit"
-Cohesion: 0.19
-Nodes (13): Two Execution Paths Architecture, Atomic Write Pattern, Gateway Concurrency Model (A1), get_auth_token(), handle_connection(), main(), main(), generate_id() (+5 more)
+### Community 3 - "Community 3"
+Cohesion: 0.23
+Nodes (13): Command, find_command(), is_enabled(), load_commands(), ParamDef, parse_kv_file(), parse_params(), test_command_backward_compat() (+5 more)
 
-### Community 5 - "Executor Builtins"
-Cohesion: 0.25
-Nodes (14): list_commands(), main(), prune_results(), rotate_logs_cmd(), run_builtin(), set_debug(), show_caps(), show_debug() (+6 more)
+### Community 4 - "Community 4"
+Cohesion: 0.26
+Nodes (14): check_enabled(), list_commands(), main(), prune_results(), rotate_logs_cmd(), run_builtin(), set_debug(), show_caps() (+6 more)
 
-### Community 6 - "Capability System"
-Cohesion: 0.33
-Nodes (7): Capability System (allow_*=0|1), M15 Issues Audit Report, Exit Code Contract (B8), Exit code constants (EXIT_ALLOWED/DENIED/ERROR/UNKNOWN), check_enabled(), log_denied, is_enabled()
+### Community 5 - "Community 5"
+Cohesion: 0.48
+Nodes (6): generate_id(), main(), random_suffix(), test_generate_id_format(), test_generate_id_uniqueness_rapid(), test_random_suffix_varies()
 
-### Community 7 - "Process Manager"
-Cohesion: 0.53
-Nodes (5): duration_ms(), capture_output(), files_changed_since(), main(), walk_dir()
-
-### Community 8 - "Verify Script"
+### Community 6 - "Community 6"
 Cohesion: 0.70
-Nodes (4): check(), check_denied(), send(), verify.sh script
+Nodes (4): verify.sh script, check(), check_denied(), send()
 
-### Community 9 - "Core Design Philosophy"
-Cohesion: 0.50
-Nodes (4): Core Loop, Design Philosophy, Action Pipeline, BoOS
+### Community 7 - "Community 7"
+Cohesion: 0.70
+Nodes (4): capture_output(), files_changed_since(), main(), walk_dir()
 
-### Community 10 - "Build & Run Scripts"
-Cohesion: 0.67
-Nodes (3): Rootfs Build Script, Rust Build Script, QEMU Runner
+### Community 8 - "Community 8"
+Cohesion: 0.83
+Nodes (3): get_auth_token(), handle_connection(), main()
 
 ## Knowledge Gaps
-- **22 isolated node(s):** `build-rust.sh script`, `build-rootfs.sh script`, `run-qemu.sh script`, `ParamDef`, `TraceLevel` (+17 more)
+- **10 isolated node(s):** `build-rust.sh script`, `run-qemu.sh script`, `Command`, `ParamDef`, `TraceLevel` (+5 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `main()` connect `Process Manager` to `Logging Subsystem`, `Command Registry`, `Gateway & Submit`, `Executor Builtins`?**
-  _High betweenness centrality (0.145) - this node is a cross-community bridge._
-- **Why does `parse_kv_file()` connect `Command Registry` to `Executor Builtins`, `Capability System`, `Process Manager`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
-- **Why does `run_builtin()` connect `Executor Builtins` to `Gateway & Submit`, `Process Manager`?**
-  _High betweenness centrality (0.070) - this node is a cross-community bridge._
-- **Are the 2 inferred relationships involving `run_builtin()` (e.g. with `main()` and `main()`) actually correct?**
-  _`run_builtin()` has 2 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 3 inferred relationships involving `main()` (e.g. with `run_builtin()` and `main()`) actually correct?**
-  _`main()` has 3 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 4 inferred relationships involving `main()` (e.g. with `Exit code constants (EXIT_ALLOWED/DENIED/ERROR/UNKNOWN)` and `main()`) actually correct?**
-  _`main()` has 4 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Read .cmd files and return list of {name, description, capability, exec}.`, `Convert BoOS command registry to OpenAI tool definitions.`, `Write a request file, return (request_id, request_path).` to the rest of the system?**
-  _38 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _18 weakly-connected nodes found - possible documentation gaps or missing edges._

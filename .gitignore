@@ -10,3 +10,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# graphify: keep product graphs (graph.json/GRAPH_REPORT.md/graph.html/manifest.json),
+# ignore caches, dated backups, and internal markers
+graphify-out/cache/
+graphify-out/20*/
+graphify-out/.graphify_*
