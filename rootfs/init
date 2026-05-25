@@ -4,11 +4,23 @@ mount -t proc none /proc
 mount -t sysfs none /sys
 mount -t devtmpfs none /dev
 
-mkdir -p /run/boos/requests
-mkdir -p /run/boos/results
-mkdir -p /var/log
+# Mount persistent /var disk (ext2 on virtio)
+echo "[init] mounting persistent /var..."
+if mount -t ext2 /dev/vda /var 2>/dev/null; then
+    echo "[init] persistent /var mounted"
+    mkdir -p /var/boos/requests
+    mkdir -p /var/boos/results
+    mkdir -p /var/log
+    sync
+else
+    echo "[init] no persistent disk, using tmpfs"
+    mkdir -p /var/boos/requests
+    mkdir -p /var/boos/results
+    mkdir -p /var/log
+fi
 mkdir -p /mnt/shared
 
+# 9p shared directory (may fail if kernel lacks 9p support)
 mount -t 9p -o trans=virtio,version=9p2000.L shared /mnt/shared 2>/dev/null || true
 
 if mountpoint -q /mnt/shared 2>/dev/null; then
@@ -16,7 +28,18 @@ if mountpoint -q /mnt/shared 2>/dev/null; then
     mkdir -p /mnt/shared/results
     echo "[init] shared dir mounted at /mnt/shared"
 else
-    echo "[init] shared dir not available (9p mount failed)"
+    echo "[init] shared dir not available, using TCP"
+fi
+
+# Set up networking via DHCP (QEMU user-mode network + virtio-net)
+echo "[init] bringing up network..."
+ifconfig eth0 up 2>/dev/null && udhcpc -q -t 5 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
+
+IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+if [ -n "$IP" ]; then
+    echo "[init] network up: eth0=$IP"
+else
+    echo "[init] network not available"
 fi
 
 echo "================================"
@@ -24,6 +47,13 @@ echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
 echo "================================"
 
-/bin/boos-daemon &
+# Start supervisor (manages all daemons)
+/bin/boos-supervisor &
+echo "[init] supervisor started"
+
+# Announce gateway availability
+if [ -n "$IP" ]; then
+    echo "[init] gateway on $IP:5555"
+fi
 
 exec /bin/boos-shell

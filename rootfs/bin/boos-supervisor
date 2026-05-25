@@ -1,0 +1,192 @@
+#!/bin/sh
+#
+# boos-supervisor — daemon supervisor for BoOS.
+#
+# Modes:
+#   start          start and supervise all enabled daemons (default)
+#   status         show health of all daemons
+#
+# Reads daemon configs from /etc/boos/daemons/*.daemon.
+# Tracks PID files in /var/boos/daemons/.
+# Logs lifecycle events to /var/log/boos.log.
+
+DAEMON_DIR="/etc/boos/daemons"
+RUN_DIR="/var/boos/daemons"
+LOG_FILE="/var/log/boos.log"
+MAX_RESTARTS=5
+RESTART_WINDOW=60
+
+mkdir -p "$RUN_DIR"
+
+get_field() {
+    file="$1"
+    key="$2"
+    grep "^$key=" "$file" | head -1 | cut -d '=' -f 2-
+}
+
+now() {
+    awk '{printf "%.3f", $1}' /proc/uptime
+}
+
+log_msg() {
+    ts="$(now)"
+    echo "ts=$ts component=boos-supervisor $1" >> "$LOG_FILE"
+}
+
+restart_count() {
+    name="$1"
+    count_file="$RUN_DIR/${name}.restarts"
+    if [ -f "$count_file" ]; then
+        cat "$count_file"
+    else
+        echo "0"
+    fi
+}
+
+inc_restart_count() {
+    name="$1"
+    count_file="$RUN_DIR/${name}.restarts"
+    count="$(restart_count "$name")"
+    echo $((count + 1)) > "$count_file"
+}
+
+reset_restart_count() {
+    name="$1"
+    count_file="$RUN_DIR/${name}.restarts"
+    rm -f "$count_file"
+}
+
+start_daemon() {
+    name="$1"
+    exec_cmd="$2"
+    desc="$3"
+
+    log_msg "event=starting daemon=$name desc=\"$desc\" cmd=\"$exec_cmd\""
+    $exec_cmd &
+    pid=$!
+    echo "$pid" > "$RUN_DIR/${name}.pid"
+    log_msg "event=started daemon=$name pid=$pid"
+}
+
+is_running() {
+    name="$1"
+    pid_file="$RUN_DIR/${name}.pid"
+
+    if [ -f "$pid_file" ]; then
+        pid="$(cat "$pid_file")"
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+check_and_restart() {
+    name="$1"
+    exec_cmd="$2"
+    restart="$3"
+    desc="$4"
+
+    if ! is_running "$name"; then
+        count="$(restart_count "$name")"
+
+        if [ "$count" -ge "$MAX_RESTARTS" ]; then
+            log_msg "event=failed daemon=$name reason=max_restarts($MAX_RESTARTS)"
+            return
+        fi
+
+        if [ "$restart" = "never" ]; then
+            log_msg "event=stopped daemon=$name restart_policy=never"
+            return
+        fi
+
+        inc_restart_count "$name"
+        new_count="$(restart_count "$name")"
+        log_msg "event=restarting daemon=$name attempt=$new_count reason=process_died"
+        start_daemon "$name" "$exec_cmd" "$desc"
+    fi
+}
+
+load_and_start() {
+    found=0
+    for f in "$DAEMON_DIR"/*.daemon
+    do
+        [ -f "$f" ] || continue
+        found=1
+
+        name="$(get_field "$f" name)"
+        exec_cmd="$(get_field "$f" exec)"
+        restart="$(get_field "$f" restart)"
+        enabled="$(get_field "$f" enabled)"
+        desc="$(get_field "$f" description)"
+
+        [ "$enabled" != "1" ] && continue
+
+        if ! is_running "$name"; then
+            start_daemon "$name" "$exec_cmd" "$desc"
+            reset_restart_count "$name"
+        fi
+    done
+
+    if [ "$found" = "0" ]; then
+        log_msg "event=error msg=\"no daemon configs found\""
+    fi
+}
+
+show_status() {
+    echo "Daemon status:"
+    for f in "$DAEMON_DIR"/*.daemon
+    do
+        [ -f "$f" ] || continue
+
+        name="$(get_field "$f" name)"
+        desc="$(get_field "$f" description)"
+        enabled="$(get_field "$f" enabled)"
+
+        if [ "$enabled" != "1" ]; then
+            echo "  $name: disabled"
+            continue
+        fi
+
+        if is_running "$name"; then
+            pid="$(cat "$RUN_DIR/${name}.pid" 2>/dev/null)"
+            count="$(restart_count "$name")"
+            if [ "$count" -gt 0 ]; then
+                echo "  $name: running (pid=$pid, restarts=$count) — $desc"
+            else
+                echo "  $name: running (pid=$pid) — $desc"
+            fi
+        else
+            echo "  $name: stopped — $desc"
+        fi
+    done
+}
+
+case "$1" in
+    status)
+        show_status
+        ;;
+    start|*)
+        log_msg "event=started mode=supervise"
+        load_and_start
+
+        while true
+        do
+            for f in "$DAEMON_DIR"/*.daemon
+            do
+                [ -f "$f" ] || continue
+
+                name="$(get_field "$f" name)"
+                exec_cmd="$(get_field "$f" exec)"
+                restart="$(get_field "$f" restart)"
+                enabled="$(get_field "$f" enabled)"
+                desc="$(get_field "$f" description)"
+
+                [ "$enabled" != "1" ] && continue
+
+                check_and_restart "$name" "$exec_cmd" "$restart" "$desc"
+            done
+            sleep 2
+        done
+        ;;
+esac

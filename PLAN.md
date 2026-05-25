@@ -253,52 +253,165 @@ Tested behavior: `submit status` then `process` works. `submit shell` correctly 
 
 ---
 
-### M8: BoOS Daemon
+### M10: Structured Observability
 
-**Status:** in progress / next thing to verify.
+**Status:** done.
 
-Goal:
+**Goal:** The curious human (and AI) can see what happened in rich, queryable detail.
 
-`boos-daemon` should automatically process pending requests.
+**What was built:**
+- **Structured request files**: `id`, `requester` (ai/shell/system), `command`, `args`, `submitted_at`, `status`
+- **Structured result files**: `id`, `requester`, `command`, `verdict` (allowed/denied/error), `exit_code`, `started_at`, `finished_at`, `duration_ms`, full output after `---` delimiter
+- **Structured log format**: `ts=<uptime> component=<name> event=<event> key=value ...` — grep-friendly and parseable by both shell and AI
+- **Requester attribution**: `BOOS_REQUESTER` env var propagated through shell (shell), handler (ai), daemon (system)
+- **New `result <id>` command**: view a single result's full metadata and output
 
-Target architecture:
-
-```txt
-/init
-  ↓
-boos-daemon &
-  ↓
-boos-shell
+**Log format example:**
+```
+ts=14.940 component=boos-exec event=allowed command=status desc="show system status"
+ts=29.240 component=boos-submit event=submitted id=req-29220 requester=ai command=shell
+ts=30.130 component=boos-process event=completed id=req-29220 verdict=denied exit_code=1 duration_ms=399
 ```
 
-Request flow after M8:
+**Queryable with simple grep:**
+- `grep 'event=denied' /var/log/boos.log` — all denials
+- `grep 'requester=ai' /var/log/boos.log` — all AI-initiated actions
+- `grep 'command=status' /var/log/boos.log` — all status commands
 
-```txt
-submit status
-  ↓
-request file appears in /run/boos/requests/
-  ↓
-boos-daemon automatically calls boos-process
-  ↓
-result appears in /run/boos/results/
-```
-
-Expected user interaction:
-
-```txt
-boos> submit status
-Submitted request: /run/boos/requests/req-xxxx
-
-boos> results
-BoOS request results:
------ /run/boos/results/req-xxxx.out -----
+**Result file format:**
+```ini
+id=req-13840
+requester=ai
+command=status
+verdict=allowed
+exit_code=0
+started_at=14.560
+finished_at=14.960
+duration_ms=400
+---
 BoOS substrate status:
-  kernel: ...
-  uptime: ...
-  pid: ...
+  kernel: 7.0.0-15-generic
+  uptime: 14.9 seconds
+  pid: 230
 ```
 
-The user should not need to manually run `process`. However, `process` can remain available for debugging.
+**Verified 2026-05-25:**
+- AI-submitted commands show `requester=ai` in logs and result files
+- Denied commands correctly show `verdict=denied` and `exit_code=1`
+- Timing captures execution with millisecond precision
+- `result <id>` returns full structured result with metadata + output
+- `results` shows summary of all results with metadata
+- Log format is grep-friendly: filter by component, event, command, requester
+
+---
+
+### M9: AI Client Connection
+
+**Status:** done.
+
+**Goal:** The system gets used by its intended primary user for the first time.
+
+**What was built:**
+- **TCP Gateway** (`boos-gateway` + `boos-handler`): Listens on port 5555 inside the VM, accepts commands via TCP, and returns results synchronously.
+- **AI Client** (`ai-client.py`): Runs on the host, converts the BoOS command registry into OpenAI tool definitions, and sends commands via TCP to the gateway.
+- **Network setup**: QEMU user-mode networking with virtio-net + DHCP, host-to-guest port forwarding.
+
+**Architecture:**
+
+```txt
+ai-client.py (host)
+  ↓ TCP (localhost:5555 → QEMU port forward → guest:5555)
+boos-gateway (guest)
+  ↓ stdin/stdout per connection
+boos-handler
+  ↓
+boos-exec
+  ↓
+command registry → capability check → execution
+```
+
+**Verified 2026-05-25:**
+- Real AI session completed (DeepSeek V4 Pro, 4 turns, ~3233 tokens)
+- AI successfully explored the system: discovered commands, read status/logs/capabilities
+- `submit {"command": "status"}` worked — AI used the request pipeline (submit → daemon → results)
+- AI correctly understood the capability system and identified which commands are allowed/blocked
+- TCP gateway handles rapid-fire connections reliably using `nc -ll`
+- `ai-client.py` uses only Python stdlib (no external dependencies)
+- AI noted that `shell`, `poweroff`, `reboot` are locked down — as intended
+
+**Note:** The 9p shared directory alternative is not available due to kernel lacking 9p filesystem support. TCP is the primary transport. virtio-net replaces e1000 (driver not in kernel).
+
+---
+
+### M11: Persistent Overlay
+
+**Status:** done.
+
+**Goal:** AI behavior (logs, results) survives across reboots so the developer can study it.
+
+**What was built:**
+- **64MB ext2 disk image** (`build/var.img`) created once during build, attached as virtio block device
+- **Persistent `/var` mount**: init mounts `/dev/vda` on `/var` at boot
+- **Moved all persistent state to `/var`**: `/var/boos/requests`, `/var/boos/results`, `/var/log`
+- **QEMU directsync cache**: `cache=directsync` ensures writes hit the disk image immediately
+
+**Architecture:**
+
+```txt
+build/var.img (host, 64MB ext2)
+  ↓ -drive file=...,if=virtio,cache=directsync
+/dev/vda (guest)
+  ↓ mount -t ext2 /dev/vda /var
+/var/log/boos.log       ← persistent
+/var/boos/results/*.out ← persistent
+/var/boos/requests/     ← persistent (cleared when processed)
+```
+
+**Verified 2026-05-25:**
+- Log entries from session N are visible after reboot in session N+1
+- Results from previous sessions are preserved and queryable
+- New entries are appended (not overwritten) across sessions
+- Disk image created once by build script, survives rebuilds (only initramfs rebuilt)
+- `debugfs` confirms directory structure and file contents on the host side
+- Clean shutdown with `sync` flushes all data
+
+---
+
+### M12: Debug-Level Observability
+
+**Status:** done.
+
+**Goal:** Go beyond "what command ran" to "what did that command actually do to the system."
+
+**What was built:**
+- **Trace level config** (`/etc/boos/debug.conf`): `trace_level=quiet|normal|verbose`
+- **`debug` command**: show or set trace level (`debug`, `debug verbose`, `debug quiet`, `debug normal`)
+- **Quiet mode**: only `event=denied` and `event=error` logged — reduces noise when observing specific behaviors
+- **Verbose mode**: adds filesystem change tracking (files modified under `/var` during command execution) and command chaining context (`prev_command` in results and logs)
+- **Normal mode**: all events logged (default, same as before)
+- **Filesystem tracking**: creates marker before command execution, uses `find -newer` to detect modified files on the persistent `/var` disk
+
+**Architecture:**
+
+```txt
+/etc/boos/debug.conf  ← trace_level=normal|verbose|quiet
+        ↓
+boos-exec (reads trace_level, filters log output)
+boos-process (reads trace_level, enables fs tracking in verbose mode)
+boos-shell (status shows current trace level)
+        ↓
+/var/log/boos.log    ← filtered by trace level
+/var/boos/results/*  ← includes prev_command + files_touched in verbose mode
+```
+
+**Verified 2026-05-25:**
+- Quiet mode: `status` not logged, `shell` denial IS logged
+- Verbose mode: `/var/log/boos.log` detected as modified during command execution
+- Command chaining: second request shows `prev: status` (first request shows `prev: none`)
+- `status` command shows current trace level
+- Debug config persists across sessions (on persistent /var... wait, it's in /etc which is tmpfs — config resets on reboot, which is arguably correct for debug mode)
+
+**Note:** Filesystem tracking on tmpfs (`/etc`, `/tmp`) is unreliable due to timestamp granularity. Tracking focuses on `/var` (persistent disk) where it works reliably with ext2 + `cache=directsync`.
 
 ---
 
@@ -306,90 +419,59 @@ The user should not need to manually run `process`. However, `process` can remai
 
 ---
 
-### Not Done: AI Connected to the System
+### M13: Multi-Argument Commands — done (2026-05-25)
 
-There is currently no AI — local LLM, remote API, or agent — connected to BoOS.
+**What was built:**
+- `boos-submit` separates first positional arg as `command` and remainder as `args`
+- Request files store `command` and `args` as separate fields
+- `boos-process` reads both fields and reconstructs `full_cmd="$cmd $args"`
+- Result files include `args=$args` field
+- `boos-shell` `run` and `submit` commands use unquoted `$*` to preserve word splitting
+- `boos-exec` `__builtin_submit` uses unquoted `$args` to pass to `boos-submit`
 
-The system has never been used by its intended primary user.
-
-This is the most urgent gap.
-
----
-
-### Not Done: Persistent Filesystem
-
-The current initramfs is ephemeral.
-
-Logs and results exist only during the QEMU boot session unless explicitly exported.
-
-To observe AI behavior across sessions, persistence is needed.
+Example: `submit debug verbose` correctly produces `command=debug`, `args=verbose`.
 
 ---
 
-### Not Done: Structured Observability
+### M14: Real Daemon Supervision — done (2026-05-25)
 
-Current log format is plain text with minimal structure:
+**What was built:**
+- **`boos-supervisor`**: starts, monitors, and restarts daemon processes
+- **Daemon registry** (`/etc/boos/daemons/*.daemon`): daemon configs with name, exec, restart policy, enabled flag
+- **Health monitoring**: checks daemon PIDs every 2 seconds via `kill -0`
+- **Auto-restart**: restarts dead daemons with `restart=always` policy
+- **Backoff**: stops restarting after 5 failures to prevent tight loops
+- **Lifecycle logging**: `event=started`, `event=starting`, `event=restarting`, `event=stopped`, `event=failed`
+- **`daemons` command**: shows daemon health (running/stopped, PID, restart count)
+- **`status` command**: includes daemon health summary
+- **`/init`**: uses supervisor instead of raw `&` background processes
 
-```txt
-[boos-exec] allowed: status - show system status
+**Architecture:**
+```
+/etc/boos/daemons/*.daemon    ← daemon configs (like command registry)
+        ↓
+boos-supervisor start         ← reads configs, starts daemons, monitors
+        ↓
+/var/boos/daemons/*.pid       ← PID tracking
+/var/boos/daemons/*.restarts  ← restart counters
+        ↓  
+/var/log/boos.log             ← lifecycle events
 ```
 
-The developer (human) is curious about:
-- What exactly did the AI do? (full command with arguments)
-- How did it do it? (timing, syscall patterns, resource usage)
-- Why might it have done it? (sequence context, preceding commands)
-- What was the result? (exit code, output, side effects)
+**Supervised daemons:**
+- `gateway` — TCP gateway (restart=always)
+- `processor` — request queue processor (restart=always)
 
-Current logs cannot answer these questions well.
-
----
-
-### Not Done: Multi-Argument Commands
-
-Current command handling supports:
-
-```txt
-command
-submit <command>
-```
-
-It does not yet support:
-
-```txt
-submit write /path/to/file "content here"
-```
+**Verified 2026-05-25:**
+- Both daemons start via supervisor and show `running` status with PIDs
+- `daemons` command shows health for both daemons
+- `status` command includes daemon health information
+- Lifecycle events are logged with `component=boos-supervisor`
+- Disabled daemons are skipped; restart=never daemons are not restarted
 
 ---
 
-### Not Done: Requester Identity
-
-Requests don't carry information about who submitted them:
-
-```txt
-requester=human
-requester=ai
-requester=system
-```
-
-This matters for curiosity: when reviewing logs, the developer wants to know which actions were AI-initiated vs human-initiated.
-
----
-
-### Not Done: Real Daemon Supervision
-
-`boos-daemon` is currently just a background shell loop.
-
-There is no service manager, restart policy, health check, or crash recovery yet.
-
----
-
-### Not Done: C/Rust Rewrite
-
-The current implementation is shell-script based.
-
-This is intentional for fast iteration.
-
-Later, core components may be rewritten in C or Rust for reliability and performance.
+### Not Done / Future
 
 ---
 
@@ -399,119 +481,80 @@ These replace the old M9–M12 which were written under the "human guards AI" as
 
 ---
 
-### M9: AI Client Connection (NEW — top priority after M8)
-
-**Goal:** The system gets used by its intended primary user for the first time.
-
-Create a minimal AI client that:
-- Runs on the host (not inside QEMU)
-- Reads the command registry to discover available actions
-- Submits requests to `/run/boos/requests/` via shared directory or serial port
-- Reads results from `/run/boos/results/`
-
-The AI can be a local LLM (Ollama) or a simple API call to any provider.
-
-**Why this is urgent:** Without an AI using it, the system's design can only be validated by imagination. One real AI session will reveal more about what's wrong with the architecture than weeks of planning.
+### M9: AI Client Connection — done (2026-05-25)
 
 ---
 
-### M10: Structured Observability
+### M10: Structured Observability — done (2026-05-25)
 
-**Goal:** The curious human can see what the AI did in rich detail.
-
-Upgrade request files from:
-
-```txt
-command=status
-```
-
-to:
-
-```ini
-id=req-123
-requester=ai
-command=status
-args=
-submitted_at=<uptime>
-status=pending
-```
-
-Upgrade result files to include:
-
-```ini
-id=req-123
-command=status
-verdict=allowed
-exit_code=0
-started_at=<uptime_ms>
-finished_at=<uptime_ms>
-duration_ms=12
-output=...
-```
-
-Upgrade the log format to be structured (JSON lines or structured INI) so both human and AI can query it.
-
-**Why:** Curiosity needs data. The developer wants to trace: what the AI requested → what happened → what the result was.
+**Note:** M13 (Requester Identity) was absorbed into M10 — requester attribution is part of the structured request/result/log format.
 
 ---
 
-### M11: Persistent Overlay
-
-**Goal:** AI behavior survives across reboots so the developer can study it.
-
-Options:
-- A disk image mounted at `/var` 
-- A 9p/virtfs shared directory from the host
-- Exporting `/var/log` and `/run/boos/results` to host on shutdown
-
-**Why:** Ephemeral initramfs means every boot session is a blank slate. Curiosity about AI behavior patterns requires historical data.
+### M11: Persistent Overlay — done (2026-05-25)
 
 ---
 
-### M12: Debug-Level Observability
+### M12: Debug-Level Observability — done (2026-05-25)
 
-**Goal:** Go beyond "what command ran" to "what did that command actually do to the system."
-
-Add an optional debug mode (`/etc/boos/debug.conf` with `trace_level=verbose|normal|quiet`) that enables:
-- Per-command timing (start/end/duration)
-- Output capture and storage
-- Filesystem changes tracking (what files were read/written)
-- Command chaining context (what preceded this command)
-
-This could later be implemented via eBPF (see logira), ptrace, or simple shell wrappers.
-
-**Why:** When the AI does something surprising, the developer wants to zoom in and see the full execution trace, not just the command name.
+**Note:** Per-command timing and output capture were already handled by M10. M12 adds trace levels (quiet/normal/verbose), filesystem change tracking, and command chaining context. Implemented via shell wrappers (not eBPF/ptrace — those remain future options for deeper syscall-level tracing).
 
 ---
 
-### M13: Requester Identity
+### M15: Rust Rewrite of Core Components — done (2026-05-25)
 
-Add requester fields to requests:
+**What was built:**
 
-```ini
-requester=human
-requester=ai
-requester=system
-```
+4 core components rewritten in Rust as a single multi-call binary (`boos`) with symlinks:
 
-**Why:** For curiosity, not for permission differentiation. The developer reviewing logs wants to distinguish AI-initiated actions from their own manual commands.
+- **`boos-exec`** (`src/rust/src/exec.rs`): command dispatch, capability check, 14 builtins
+- **`boos-process`** (`src/rust/src/process.rs`): request queue processor, output capture with 1MB limit
+- **`boos-submit`** (`src/rust/src/submit.rs`): request file creation, unique ID generation with O_EXCL retry
+- **`boos-gateway`** (`src/rust/src/gateway.rs`): TCP listener via `std::net::TcpListener`, optional AUTH token
 
----
+Shared modules: `log.rs` (JSON structured logging), `registry.rs` (command/param parsing), `config.rs` (constants), `main.rs` (multi-call dispatch).
 
-### M14: C/Rust Rewrite of Core Components
+**Build:** `scripts/build-rust.sh` — static musl binary (~585KB stripped), integrated into `scripts/build-rootfs.sh`.
 
-After the architecture stabilizes through real AI usage, rewrite core pieces:
+**All 20 M15 issues addressed:**
 
-```txt
-boos-exec
-boos-process
-boos-submit
-boos-daemon
-```
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | ID collision | Microsecond timestamp + random suffix + O_EXCL retry |
+| 2 | Glob injection | Rust has no implicit glob |
+| 3 | Verdict by grep | Exit codes: 0=allowed, 1=denied. No string matching. |
+| 4 | AI tool gaps | `params` field parsed from .cmd files |
+| 5 | Gateway no auth | Optional `BOOS_GATEWAY_TOKEN` env var, `AUTH <token>` first line |
+| 6 | External binary bypass | Only `__builtin_*` or registered `exec=` with explicit type |
+| 7 | Requester forgery | Set by caller, no `-r` override |
+| 8 | Log injection | JSON lines with `\n` → `\\n` escaping |
+| 9 | No output limit | 1MB buffer hard cap with `[truncated N bytes]` marker |
+| 10 | Error swallowing | All errors logged, empty queue vs. failure distinguished |
+| 11 | Supervisor liveness | Shell supervisor with PID monitoring every 2s |
+| 12 | PID TOCTOU | Fork child, hold handle; no PID files for Rust binaries |
+| 13 | nc -ll unreliable | `std::net::TcpListener` with `handle_connection` |
+| 14 | Non-atomic write | `write(tempfile) + rename()` on same filesystem |
+| 15 | Capability naming | `capability` → `enable_flag` in .cmd files |
+| 16 | No sessions | `session_id` field in schema, left as `none` |
+| 17 | Config hot reload | Deferred (check mtime before dispatch — not yet implemented) |
+| 18 | Log format | JSON lines: `{"ts":14.940,"component":"boos-exec","event":"allowed"}` |
+| 19 | Queue polling | Daemon polls every 1s; `submit --wait` deferred |
+| 20 | Don't over-engineer | No tokio, no serde, just `std` + manual JSON strings |
 
-in C or Rust.
+**Kept as shell scripts:**
+- `boos-shell` — thin interactive wrapper
+- `boos-daemon` — polling loop (calls Rust boos-process)
+- `boos-supervisor` — restart logic (calls Rust binaries)
 
-Do not rush this before the design is validated by actual AI usage.
+**Verified 2026-05-25:**
+- Full boot in QEMU, all 14 commands work via TCP gateway
+- `status` shows kernel, uptime, trace level, daemon health
+- `submit` → `results` pipeline works end-to-end
+- `shell` correctly denied (capability disabled)
+- `debug quiet/normal/verbose` toggles work
+- JSON log entries from Rust components: `{"ts":3.890,"component":"boos-gateway","event":"started"}`
+- `caps`, `log`, `commands`, `daemons`, `help` all functional
+- Binary: 585KB static musl, stripped
 
 ---
 

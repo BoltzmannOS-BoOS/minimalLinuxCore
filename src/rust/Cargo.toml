@@ -1,0 +1,14 @@
+[package]
+name = "boos"
+version = "0.1.0"
+edition = "2021"
+
+# Static link musl for minimal initramfs footprint.
+# Build: cargo build --release --target x86_64-unknown-linux-musl
+
+[profile.release]
+opt-level = "s"       # size optimization
+lto = true            # link-time optimization
+strip = true          # strip symbols
+panic = "abort"       # no unwinding machinery
+codegen-units = 1     # better optimization

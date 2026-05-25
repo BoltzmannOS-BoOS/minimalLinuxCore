@@ -5,7 +5,10 @@ LOG_FILE="/var/log/boos.log"
 SHARED_REQ_DIR="/mnt/shared/requests"
 SHARED_RESULT_DIR="/mnt/shared/results"
 
-echo "[boos-daemon] started" >> "$LOG_FILE"
+ts="$(awk '{printf "%.3f", $1}' /proc/uptime)"
+echo "ts=$ts component=boos-daemon event=started" >> "$LOG_FILE"
+
+export BOOS_REQUESTER=system
 
 while true
 do

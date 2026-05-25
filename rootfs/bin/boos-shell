@@ -3,8 +3,11 @@
 LOG_FILE="/var/log/boos.log"
 
 log_msg() {
-    echo "[boos-shell] $1" >> "$LOG_FILE"
+    ts="$(awk '{printf "%.3f", $1}' /proc/uptime)"
+    echo "ts=$ts component=boos-shell $1" >> "$LOG_FILE"
 }
+
+export BOOS_REQUESTER=shell
 
 echo "BoOS shell started."
 echo "Type 'help' to see commands."
@@ -16,7 +19,7 @@ do
 
     [ -z "$line" ] && continue
 
-    log_msg "input: $line"
+    log_msg "event=input input=\"$line\""
 
     set -- $line
     cmd="$1"
@@ -24,23 +27,25 @@ do
 
     case "$cmd" in
         run)
-            if [ -z "$arg" ]; then
+            shift
+            if [ -z "$1" ]; then
                 echo "Usage: run <command>"
             else
-                /bin/boos-exec "$arg"
+                /bin/boos-exec $*
             fi
             ;;
 
         submit)
-            if [ -z "$arg" ]; then
-                echo "Usage: submit <command>"
+            shift
+            if [ -z "$1" ]; then
+                echo "Usage: submit <command> [args...]"
             else
-                /bin/boos-exec submit "$arg"
+                /bin/boos-exec submit $*
             fi
             ;;
 
-        help|commands|status|log|caps|shell|poweroff|process|results)
-            /bin/boos-exec "$cmd"
+        help|commands|status|log|caps|shell|poweroff|process|results|result|debug|daemons)
+            /bin/boos-exec "$cmd" "$arg"
             ;;
 
         exit|quit)

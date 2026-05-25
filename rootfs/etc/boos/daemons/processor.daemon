@@ -1,0 +1,5 @@
+name=processor
+exec=/bin/boos-daemon
+restart=always
+enabled=1
+description=process pending requests from the queue

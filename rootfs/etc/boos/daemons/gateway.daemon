@@ -1,0 +1,5 @@
+name=gateway
+exec=/bin/boos-gateway 5555
+restart=always
+enabled=1
+description=TCP gateway for external AI clients
