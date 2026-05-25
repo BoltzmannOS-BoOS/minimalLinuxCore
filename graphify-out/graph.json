@@ -1,0 +1,4056 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "system_boot_sequence",
+        "label": "System Boot Sequence",
+        "nodes": [
+          "rootfs_init_init_script",
+          "bin_boos_supervisor_supervisor",
+          "bin_boos_shell_shell"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "rootfs/init"
+      },
+      {
+        "id": "request_pipeline",
+        "label": "Request Pipeline",
+        "nodes": [
+          "bin_mock_ai_driver_driver",
+          "bin_boos_daemon_daemon",
+          "ai_client_conversation_loop",
+          "plan_request_queue_concept"
+        ],
+        "relation": "participate_in",
+        "confidence": "INFERRED",
+        "confidence_score": 0.85,
+        "source_file": "PLAN.md"
+      },
+      {
+        "id": "rust_core_components",
+        "label": "Rust Core Components",
+        "nodes": [
+          "plan_boos_exec",
+          "plan_boos_process",
+          "plan_boos_submit",
+          "plan_boos_gateway"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "PLAN.md"
+      },
+      {
+        "id": "boos_request_lifecycle",
+        "label": "Request Lifecycle Pipeline",
+        "nodes": [
+          "src_submit_main",
+          "src_process_main",
+          "src_exec_main",
+          "src_exec_run_builtin",
+          "src_exec_check_enabled",
+          "src_gateway_handle_connection"
+        ],
+        "relation": "participate_in",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": ".claude/skills/boos-dev.md"
+      },
+      {
+        "id": "boos_registry_capability",
+        "label": "Registry and Capability System",
+        "nodes": [
+          "src_registry_command",
+          "src_registry_load_commands",
+          "src_registry_find_command",
+          "src_registry_is_enabled",
+          "src_registry_parse_kv_file",
+          "src_exec_check_enabled",
+          "boos_command_registry_pattern",
+          "boos_capability_system"
+        ],
+        "relation": "implement",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": ".claude/skills/boos-dev.md"
+      },
+      {
+        "id": "boos_logging_subsystem",
+        "label": "Logging Subsystem",
+        "nodes": [
+          "src_log_write_log_bytes",
+          "src_log_event",
+          "src_log_allowed",
+          "src_log_denied",
+          "src_log_append_log_line",
+          "src_log_maybe_rotate_log",
+          "src_log_get_trace_level",
+          "src_log_tracelevel"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "src/rust/src/log.rs"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "ai-client.py",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L1",
+      "id": "ai_client_py",
+      "community": 2,
+      "norm_label": "ai-client.py"
+    },
+    {
+      "label": "load_command_registry()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L61",
+      "id": "minimallinuxcore_ai_client_load_command_registry",
+      "community": 2,
+      "norm_label": "load_command_registry()"
+    },
+    {
+      "label": "build_tools()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L75",
+      "id": "minimallinuxcore_ai_client_build_tools",
+      "community": 2,
+      "norm_label": "build_tools()"
+    },
+    {
+      "label": "ensure_dirs()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L109",
+      "id": "minimallinuxcore_ai_client_ensure_dirs",
+      "community": 2,
+      "norm_label": "ensure_dirs()"
+    },
+    {
+      "label": "write_request()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L114",
+      "id": "minimallinuxcore_ai_client_write_request",
+      "community": 2,
+      "norm_label": "write_request()"
+    },
+    {
+      "label": "wait_for_result()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L124",
+      "id": "minimallinuxcore_ai_client_wait_for_result",
+      "community": 2,
+      "norm_label": "wait_for_result()"
+    },
+    {
+      "label": "cleanup_old_files()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L135",
+      "id": "minimallinuxcore_ai_client_cleanup_old_files",
+      "community": 2,
+      "norm_label": "cleanup_old_files()"
+    },
+    {
+      "label": "make_client()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L145",
+      "id": "minimallinuxcore_ai_client_make_client",
+      "community": 2,
+      "norm_label": "make_client()"
+    },
+    {
+      "label": "build_command_list_text()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L153",
+      "id": "minimallinuxcore_ai_client_build_command_list_text",
+      "community": 2,
+      "norm_label": "build_command_list_text()"
+    },
+    {
+      "label": "format_tool_result()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L161",
+      "id": "minimallinuxcore_ai_client_format_tool_result",
+      "community": 2,
+      "norm_label": "format_tool_result()"
+    },
+    {
+      "label": "run_conversation()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L169",
+      "id": "minimallinuxcore_ai_client_run_conversation",
+      "community": 2,
+      "norm_label": "run_conversation()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": "L284",
+      "id": "minimallinuxcore_ai_client_main",
+      "community": 2,
+      "norm_label": "main()"
+    },
+    {
+      "label": "Read .cmd files and return list of {name, description, capability, exec}.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L62",
+      "id": "minimallinuxcore_ai_client_rationale_62",
+      "community": 2,
+      "norm_label": "read .cmd files and return list of {name, description, capability, exec}."
+    },
+    {
+      "label": "Convert BoOS command registry to OpenAI tool definitions.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L76",
+      "id": "minimallinuxcore_ai_client_rationale_76",
+      "community": 2,
+      "norm_label": "convert boos command registry to openai tool definitions."
+    },
+    {
+      "label": "Write a request file, return (request_id, request_path).",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L115",
+      "id": "minimallinuxcore_ai_client_rationale_115",
+      "community": 2,
+      "norm_label": "write a request file, return (request_id, request_path)."
+    },
+    {
+      "label": "Poll for result file, return content or error message.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L125",
+      "id": "minimallinuxcore_ai_client_rationale_125",
+      "community": 2,
+      "norm_label": "poll for result file, return content or error message."
+    },
+    {
+      "label": "Remove old request/result files from previous sessions.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L136",
+      "id": "minimallinuxcore_ai_client_rationale_136",
+      "community": 2,
+      "norm_label": "remove old request/result files from previous sessions."
+    },
+    {
+      "label": "Text version of command list for the list_commands tool response.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L154",
+      "id": "minimallinuxcore_ai_client_rationale_154",
+      "community": 2,
+      "norm_label": "text version of command list for the list_commands tool response."
+    },
+    {
+      "label": "Format a tool result for display and API consumption.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L162",
+      "id": "minimallinuxcore_ai_client_rationale_162",
+      "community": 2,
+      "norm_label": "format a tool result for display and api consumption."
+    },
+    {
+      "label": "Main conversation loop.",
+      "file_type": "rationale",
+      "source_file": "ai-client.py",
+      "source_location": "L170",
+      "id": "minimallinuxcore_ai_client_rationale_170",
+      "community": 2,
+      "norm_label": "main conversation loop."
+    },
+    {
+      "label": "build-rust.sh",
+      "file_type": "code",
+      "source_file": "scripts/build-rust.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "id": "scripts_build_rust_sh",
+      "community": 12,
+      "norm_label": "build-rust.sh"
+    },
+    {
+      "label": "build-rust.sh script",
+      "file_type": "code",
+      "source_file": "scripts/build-rust.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "id": "users_hostsjim_project_minimallinuxcore_scripts_build_rust_sh__entry",
+      "community": 12,
+      "norm_label": "build-rust.sh script"
+    },
+    {
+      "label": "verify.sh",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "id": "scripts_verify_sh",
+      "community": 8,
+      "norm_label": "verify.sh"
+    },
+    {
+      "label": "verify.sh script",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "id": "users_hostsjim_project_minimallinuxcore_scripts_verify_sh__entry",
+      "community": 8,
+      "norm_label": "verify.sh script"
+    },
+    {
+      "label": "send()",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L10",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "id": "scripts_verify_send",
+      "community": 8,
+      "norm_label": "send()"
+    },
+    {
+      "label": "check()",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L15",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "id": "scripts_verify_check",
+      "community": 8,
+      "norm_label": "check()"
+    },
+    {
+      "label": "check_denied()",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L30",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "id": "scripts_verify_check_denied",
+      "community": 8,
+      "norm_label": "check_denied()"
+    },
+    {
+      "label": "build-rootfs.sh",
+      "file_type": "code",
+      "source_file": "scripts/build-rootfs.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "id": "scripts_build_rootfs_sh",
+      "community": 11,
+      "norm_label": "build-rootfs.sh"
+    },
+    {
+      "label": "build-rootfs.sh script",
+      "file_type": "code",
+      "source_file": "scripts/build-rootfs.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "id": "users_hostsjim_project_minimallinuxcore_scripts_build_rootfs_sh__entry",
+      "community": 11,
+      "norm_label": "build-rootfs.sh script"
+    },
+    {
+      "label": "run-qemu.sh",
+      "file_type": "code",
+      "source_file": "scripts/run-qemu.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "id": "scripts_run_qemu_sh",
+      "community": 13,
+      "norm_label": "run-qemu.sh"
+    },
+    {
+      "label": "run-qemu.sh script",
+      "file_type": "code",
+      "source_file": "scripts/run-qemu.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "id": "users_hostsjim_project_minimallinuxcore_scripts_run_qemu_sh__entry",
+      "community": 13,
+      "norm_label": "run-qemu.sh script"
+    },
+    {
+      "label": "exec.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_exec_rs",
+      "community": 5,
+      "norm_label": "exec.rs"
+    },
+    {
+      "label": "show_help()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L11",
+      "id": "src_exec_show_help",
+      "community": 5,
+      "norm_label": "show_help()"
+    },
+    {
+      "label": "list_commands()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L30",
+      "id": "src_exec_list_commands",
+      "community": 5,
+      "norm_label": "list_commands()"
+    },
+    {
+      "label": "show_status()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L74",
+      "id": "src_exec_show_status",
+      "community": 5,
+      "norm_label": "show_status()"
+    },
+    {
+      "label": "show_debug()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L105",
+      "id": "src_exec_show_debug",
+      "community": 5,
+      "norm_label": "show_debug()"
+    },
+    {
+      "label": "set_debug()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L119",
+      "id": "src_exec_set_debug",
+      "community": 5,
+      "norm_label": "set_debug()"
+    },
+    {
+      "label": "show_log()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L137",
+      "id": "src_exec_show_log",
+      "community": 5,
+      "norm_label": "show_log()"
+    },
+    {
+      "label": "show_caps()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L144",
+      "id": "src_exec_show_caps",
+      "community": 5,
+      "norm_label": "show_caps()"
+    },
+    {
+      "label": "show_result_by_id()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L151",
+      "id": "src_exec_show_result_by_id",
+      "community": 5,
+      "norm_label": "show_result_by_id()"
+    },
+    {
+      "label": "show_results()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L165",
+      "id": "src_exec_show_results",
+      "community": 5,
+      "norm_label": "show_results()"
+    },
+    {
+      "label": "prune_results()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L235",
+      "id": "src_exec_prune_results",
+      "community": 5,
+      "norm_label": "prune_results()"
+    },
+    {
+      "label": "rotate_logs_cmd()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L291",
+      "id": "src_exec_rotate_logs_cmd",
+      "community": 5,
+      "norm_label": "rotate_logs_cmd()"
+    },
+    {
+      "label": "check_enabled()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L312",
+      "id": "src_exec_check_enabled",
+      "community": 6,
+      "norm_label": "check_enabled()"
+    },
+    {
+      "label": "run_builtin()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L323",
+      "id": "src_exec_run_builtin",
+      "community": 5,
+      "norm_label": "run_builtin()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L401",
+      "id": "src_exec_main",
+      "community": 5,
+      "norm_label": "main()"
+    },
+    {
+      "label": "registry.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_registry_rs",
+      "community": 3,
+      "norm_label": "registry.rs"
+    },
+    {
+      "label": "Command",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L9",
+      "id": "src_registry_command",
+      "community": 3,
+      "norm_label": "command"
+    },
+    {
+      "label": "ParamDef",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L18",
+      "id": "src_registry_paramdef",
+      "community": 3,
+      "norm_label": "paramdef"
+    },
+    {
+      "label": "parse_kv_file()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L24",
+      "id": "src_registry_parse_kv_file",
+      "community": 3,
+      "norm_label": "parse_kv_file()"
+    },
+    {
+      "label": "load_commands()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L43",
+      "id": "src_registry_load_commands",
+      "community": 3,
+      "norm_label": "load_commands()"
+    },
+    {
+      "label": "parse_params()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L90",
+      "id": "src_registry_parse_params",
+      "community": 3,
+      "norm_label": "parse_params()"
+    },
+    {
+      "label": "is_enabled()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L106",
+      "id": "src_registry_is_enabled",
+      "community": 6,
+      "norm_label": "is_enabled()"
+    },
+    {
+      "label": "find_command()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L113",
+      "id": "src_registry_find_command",
+      "community": 3,
+      "norm_label": "find_command()"
+    },
+    {
+      "label": "test_parse_kv_file()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L124",
+      "id": "src_registry_test_parse_kv_file",
+      "community": 3,
+      "norm_label": "test_parse_kv_file()"
+    },
+    {
+      "label": "test_parse_kv_file_empty()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L146",
+      "id": "src_registry_test_parse_kv_file_empty",
+      "community": 3,
+      "norm_label": "test_parse_kv_file_empty()"
+    },
+    {
+      "label": "test_parse_kv_file_comments()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L158",
+      "id": "src_registry_test_parse_kv_file_comments",
+      "community": 3,
+      "norm_label": "test_parse_kv_file_comments()"
+    },
+    {
+      "label": "test_parse_params()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L177",
+      "id": "src_registry_test_parse_params",
+      "community": 3,
+      "norm_label": "test_parse_params()"
+    },
+    {
+      "label": "test_parse_params_multiple()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L190",
+      "id": "src_registry_test_parse_params_multiple",
+      "community": 3,
+      "norm_label": "test_parse_params_multiple()"
+    },
+    {
+      "label": "test_parse_params_empty()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L200",
+      "id": "src_registry_test_parse_params_empty",
+      "community": 3,
+      "norm_label": "test_parse_params_empty()"
+    },
+    {
+      "label": "test_parse_params_default_required()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L209",
+      "id": "src_registry_test_parse_params_default_required",
+      "community": 3,
+      "norm_label": "test_parse_params_default_required()"
+    },
+    {
+      "label": "test_is_enabled_nonexistent_file()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L217",
+      "id": "src_registry_test_is_enabled_nonexistent_file",
+      "community": 3,
+      "norm_label": "test_is_enabled_nonexistent_file()"
+    },
+    {
+      "label": "test_command_backward_compat()",
+      "file_type": "code",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L224",
+      "id": "src_registry_test_command_backward_compat",
+      "community": 3,
+      "norm_label": "test_command_backward_compat()"
+    },
+    {
+      "label": "config.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/config.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_config_rs",
+      "community": 14,
+      "norm_label": "config.rs"
+    },
+    {
+      "label": "log.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_log_rs",
+      "community": 0,
+      "norm_label": "log.rs"
+    },
+    {
+      "label": "maybe_rotate_log()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L13",
+      "id": "src_log_maybe_rotate_log",
+      "community": 0,
+      "norm_label": "maybe_rotate_log()"
+    },
+    {
+      "label": "write_log_bytes()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L33",
+      "id": "src_log_write_log_bytes",
+      "community": 0,
+      "norm_label": "write_log_bytes()"
+    },
+    {
+      "label": "TraceLevel",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L60",
+      "id": "src_log_tracelevel",
+      "community": 0,
+      "norm_label": "tracelevel"
+    },
+    {
+      "label": "get_trace_level()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L67",
+      "id": "src_log_get_trace_level",
+      "community": 0,
+      "norm_label": "get_trace_level()"
+    },
+    {
+      "label": "uptime_secs()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L86",
+      "id": "src_log_uptime_secs",
+      "community": 0,
+      "norm_label": "uptime_secs()"
+    },
+    {
+      "label": "json_escape()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L95",
+      "id": "src_log_json_escape",
+      "community": 0,
+      "norm_label": "json_escape()"
+    },
+    {
+      "label": "log_event()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L115",
+      "id": "src_log_log_event",
+      "community": 0,
+      "norm_label": "log_event()"
+    },
+    {
+      "label": "log_allowed()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L137",
+      "id": "src_log_log_allowed",
+      "community": 0,
+      "norm_label": "log_allowed()"
+    },
+    {
+      "label": "log_denied()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L168",
+      "id": "src_log_log_denied",
+      "community": 0,
+      "norm_label": "log_denied()"
+    },
+    {
+      "label": "log_unknown()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L173",
+      "id": "src_log_log_unknown",
+      "community": 0,
+      "norm_label": "log_unknown()"
+    },
+    {
+      "label": "log()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L178",
+      "id": "src_log_log",
+      "community": 0,
+      "norm_label": "log()"
+    },
+    {
+      "label": "append_log_line()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L184",
+      "id": "src_log_append_log_line",
+      "community": 0,
+      "norm_label": "append_log_line()"
+    },
+    {
+      "label": "duration_ms()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L191",
+      "id": "src_log_duration_ms",
+      "community": 7,
+      "norm_label": "duration_ms()"
+    },
+    {
+      "label": "test_json_escape_normal_string()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L200",
+      "id": "src_log_test_json_escape_normal_string",
+      "community": 0,
+      "norm_label": "test_json_escape_normal_string()"
+    },
+    {
+      "label": "test_json_escape_quotes()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L206",
+      "id": "src_log_test_json_escape_quotes",
+      "community": 0,
+      "norm_label": "test_json_escape_quotes()"
+    },
+    {
+      "label": "test_json_escape_backslash()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L211",
+      "id": "src_log_test_json_escape_backslash",
+      "community": 0,
+      "norm_label": "test_json_escape_backslash()"
+    },
+    {
+      "label": "test_json_escape_newline()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L216",
+      "id": "src_log_test_json_escape_newline",
+      "community": 0,
+      "norm_label": "test_json_escape_newline()"
+    },
+    {
+      "label": "test_json_escape_control_chars()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L221",
+      "id": "src_log_test_json_escape_control_chars",
+      "community": 0,
+      "norm_label": "test_json_escape_control_chars()"
+    },
+    {
+      "label": "test_json_escape_combined()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L227",
+      "id": "src_log_test_json_escape_combined",
+      "community": 0,
+      "norm_label": "test_json_escape_combined()"
+    },
+    {
+      "label": "test_duration_ms()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L239",
+      "id": "src_log_test_duration_ms",
+      "community": 0,
+      "norm_label": "test_duration_ms()"
+    },
+    {
+      "label": "test_duration_ms_zero()",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L246",
+      "id": "src_log_test_duration_ms_zero",
+      "community": 0,
+      "norm_label": "test_duration_ms_zero()"
+    },
+    {
+      "label": "gateway.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_gateway_rs",
+      "community": 4,
+      "norm_label": "gateway.rs"
+    },
+    {
+      "label": "get_auth_token()",
+      "file_type": "code",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L12",
+      "id": "src_gateway_get_auth_token",
+      "community": 4,
+      "norm_label": "get_auth_token()"
+    },
+    {
+      "label": "handle_connection()",
+      "file_type": "code",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L22",
+      "id": "src_gateway_handle_connection",
+      "community": 4,
+      "norm_label": "handle_connection()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L99",
+      "id": "src_gateway_main",
+      "community": 4,
+      "norm_label": "main()"
+    },
+    {
+      "label": "submit.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_submit_rs",
+      "community": 4,
+      "norm_label": "submit.rs"
+    },
+    {
+      "label": "random_suffix()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L14",
+      "id": "src_submit_random_suffix",
+      "community": 4,
+      "norm_label": "random_suffix()"
+    },
+    {
+      "label": "generate_id()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L30",
+      "id": "src_submit_generate_id",
+      "community": 4,
+      "norm_label": "generate_id()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L38",
+      "id": "src_submit_main",
+      "community": 4,
+      "norm_label": "main()"
+    },
+    {
+      "label": "test_generate_id_format()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L124",
+      "id": "src_submit_test_generate_id_format",
+      "community": 4,
+      "norm_label": "test_generate_id_format()"
+    },
+    {
+      "label": "test_generate_id_uniqueness_rapid()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L137",
+      "id": "src_submit_test_generate_id_uniqueness_rapid",
+      "community": 4,
+      "norm_label": "test_generate_id_uniqueness_rapid()"
+    },
+    {
+      "label": "test_random_suffix_varies()",
+      "file_type": "code",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L153",
+      "id": "src_submit_test_random_suffix_varies",
+      "community": 4,
+      "norm_label": "test_random_suffix_varies()"
+    },
+    {
+      "label": "main.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_main_rs",
+      "community": 4,
+      "norm_label": "main.rs"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "L12",
+      "id": "src_main_main",
+      "community": 4,
+      "norm_label": "main()"
+    },
+    {
+      "label": "process.rs",
+      "file_type": "code",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L1",
+      "id": "src_rust_src_process_rs",
+      "community": 7,
+      "norm_label": "process.rs"
+    },
+    {
+      "label": "capture_output()",
+      "file_type": "code",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L17",
+      "id": "src_process_capture_output",
+      "community": 7,
+      "norm_label": "capture_output()"
+    },
+    {
+      "label": "files_changed_since()",
+      "file_type": "code",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L90",
+      "id": "src_process_files_changed_since",
+      "community": 7,
+      "norm_label": "files_changed_since()"
+    },
+    {
+      "label": "walk_dir()",
+      "file_type": "code",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L96",
+      "id": "src_process_walk_dir",
+      "community": 7,
+      "norm_label": "walk_dir()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L132",
+      "id": "src_process_main",
+      "community": 7,
+      "norm_label": "main()"
+    },
+    {
+      "label": "BoOS AI Client",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_ai_client",
+      "community": 1,
+      "norm_label": "boos ai client"
+    },
+    {
+      "label": "Command Registry Loader",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_command_registry_loader",
+      "community": 1,
+      "norm_label": "command registry loader"
+    },
+    {
+      "label": "OpenAI Tool Builder",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_tool_builder",
+      "community": 1,
+      "norm_label": "openai tool builder"
+    },
+    {
+      "label": "Request Writer",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_request_writer",
+      "community": 1,
+      "norm_label": "request writer"
+    },
+    {
+      "label": "Result Poller",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_result_poller",
+      "community": 1,
+      "norm_label": "result poller"
+    },
+    {
+      "label": "Conversation Loop",
+      "file_type": "code",
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "ai_client_conversation_loop",
+      "community": 1,
+      "norm_label": "conversation loop"
+    },
+    {
+      "label": "Init Script",
+      "file_type": "code",
+      "source_file": "rootfs/init",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "rootfs_init_init_script",
+      "community": 1,
+      "norm_label": "init script"
+    },
+    {
+      "label": "Mock AI Driver",
+      "file_type": "code",
+      "source_file": "rootfs/bin/mock-ai-driver",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "bin_mock_ai_driver_driver",
+      "community": 1,
+      "norm_label": "mock ai driver"
+    },
+    {
+      "label": "BoOS Daemon",
+      "file_type": "code",
+      "source_file": "rootfs/bin/boos-daemon",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "bin_boos_daemon_daemon",
+      "community": 1,
+      "norm_label": "boos daemon"
+    },
+    {
+      "label": "BoOS Supervisor",
+      "file_type": "code",
+      "source_file": "rootfs/bin/boos-supervisor",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "bin_boos_supervisor_supervisor",
+      "community": 1,
+      "norm_label": "boos supervisor"
+    },
+    {
+      "label": "BoOS Shell",
+      "file_type": "code",
+      "source_file": "rootfs/bin/boos-shell",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "bin_boos_shell_shell",
+      "community": 1,
+      "norm_label": "boos shell"
+    },
+    {
+      "label": "Rust Build Script",
+      "file_type": "code",
+      "source_file": "scripts/build-rust.sh",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "scripts_build_rust_build_script",
+      "community": 10,
+      "norm_label": "rust build script"
+    },
+    {
+      "label": "Verification Suite",
+      "file_type": "code",
+      "source_file": "scripts/verify.sh",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "scripts_verify_verification",
+      "community": 15,
+      "norm_label": "verification suite"
+    },
+    {
+      "label": "Rootfs Build Script",
+      "file_type": "code",
+      "source_file": "scripts/build-rootfs.sh",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "scripts_build_rootfs_build_script",
+      "community": 10,
+      "norm_label": "rootfs build script"
+    },
+    {
+      "label": "QEMU Runner",
+      "file_type": "code",
+      "source_file": "scripts/run-qemu.sh",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "scripts_run_qemu_qemu_runner",
+      "community": 10,
+      "norm_label": "qemu runner"
+    },
+    {
+      "label": "BoOS",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "readme_bos_concept",
+      "community": 9,
+      "norm_label": "boos"
+    },
+    {
+      "label": "Boot Chain",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "readme_boot_chain",
+      "community": 1,
+      "norm_label": "boot chain"
+    },
+    {
+      "label": "Action Pipeline",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "readme_action_pipeline",
+      "community": 9,
+      "norm_label": "action pipeline"
+    },
+    {
+      "label": "Design Philosophy",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_design_philosophy",
+      "community": 9,
+      "norm_label": "design philosophy"
+    },
+    {
+      "label": "Core Loop",
+      "file_type": "concept",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_core_loop",
+      "community": 9,
+      "norm_label": "core loop"
+    },
+    {
+      "label": "Command Registry",
+      "file_type": "concept",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_command_registry_concept",
+      "community": 1,
+      "norm_label": "command registry"
+    },
+    {
+      "label": "Capability System",
+      "file_type": "concept",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_capability_system_concept",
+      "community": 16,
+      "norm_label": "capability system"
+    },
+    {
+      "label": "Request Queue",
+      "file_type": "concept",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_request_queue_concept",
+      "community": 1,
+      "norm_label": "request queue"
+    },
+    {
+      "label": "Structured Observability",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_structured_observability",
+      "community": 1,
+      "norm_label": "structured observability"
+    },
+    {
+      "label": "Persistent Overlay",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_persistent_overlay",
+      "community": 17,
+      "norm_label": "persistent overlay"
+    },
+    {
+      "label": "Debug-Level Observability",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_debug_observability",
+      "community": 18,
+      "norm_label": "debug-level observability"
+    },
+    {
+      "label": "Rust Multi-Call Rewrite",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_rust_rewrite",
+      "community": 1,
+      "norm_label": "rust multi-call rewrite"
+    },
+    {
+      "label": "boos-exec",
+      "file_type": "code",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_boos_exec",
+      "community": 1,
+      "norm_label": "boos-exec"
+    },
+    {
+      "label": "boos-process",
+      "file_type": "code",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_boos_process",
+      "community": 1,
+      "norm_label": "boos-process"
+    },
+    {
+      "label": "boos-submit",
+      "file_type": "code",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_boos_submit",
+      "community": 1,
+      "norm_label": "boos-submit"
+    },
+    {
+      "label": "boos-gateway",
+      "file_type": "code",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_boos_gateway",
+      "community": 1,
+      "norm_label": "boos-gateway"
+    },
+    {
+      "label": "Executor Split",
+      "file_type": "rationale",
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "plan_executor_split",
+      "community": 1,
+      "norm_label": "executor split"
+    },
+    {
+      "label": "Exit code constants (EXIT_ALLOWED/DENIED/ERROR/UNKNOWN)",
+      "file_type": "code",
+      "source_file": "src/rust/src/config.rs",
+      "source_location": "src/rust/src/config.rs:19",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_config_exit_codes",
+      "community": 6,
+      "norm_label": "exit code constants (exit_allowed/denied/error/unknown)"
+    },
+    {
+      "label": "File path constants",
+      "file_type": "code",
+      "source_file": "src/rust/src/config.rs",
+      "source_location": "src/rust/src/config.rs:1",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_config_paths",
+      "community": 19,
+      "norm_label": "file path constants"
+    },
+    {
+      "label": "Limits and concurrency constants (MAX_OUTPUT_BYTES, MAX_LOG_LINE_LEN, MAX_GATEWAY_THREADS)",
+      "file_type": "code",
+      "source_file": "src/rust/src/config.rs",
+      "source_location": "src/rust/src/config.rs:10",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_config_limits",
+      "community": 0,
+      "norm_label": "limits and concurrency constants (max_output_bytes, max_log_line_len, max_gateway_threads)"
+    },
+    {
+      "label": "log_event",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "src/rust/src/log.rs:115",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_log_event",
+      "community": 20,
+      "norm_label": "log_event"
+    },
+    {
+      "label": "log_allowed",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "src/rust/src/log.rs:137",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_log_allowed",
+      "community": 5,
+      "norm_label": "log_allowed"
+    },
+    {
+      "label": "log_denied",
+      "file_type": "code",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "src/rust/src/log.rs:168",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "src_log_denied",
+      "community": 6,
+      "norm_label": "log_denied"
+    },
+    {
+      "label": "M15 Issues Audit Report",
+      "file_type": "document",
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "m15_issues_audit_report",
+      "community": 6,
+      "norm_label": "m15 issues audit report"
+    },
+    {
+      "label": "DeepSeek V4 Repetitive Output Bug Report",
+      "file_type": "document",
+      "source_file": "bug-reports/deepseek-v4-repetition-bug.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "deepseek_repetition_bug",
+      "community": 21,
+      "norm_label": "deepseek v4 repetitive output bug report"
+    },
+    {
+      "label": "Exit Code Contract (B8)",
+      "file_type": "rationale",
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "m15_issues_exit_code_contract",
+      "community": 6,
+      "norm_label": "exit code contract (b8)"
+    },
+    {
+      "label": "Gateway Concurrency Model (A1)",
+      "file_type": "rationale",
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "m15_issues_gateway_concurrency",
+      "community": 4,
+      "norm_label": "gateway concurrency model (a1)"
+    },
+    {
+      "label": "Atomic Write Pattern",
+      "file_type": "rationale",
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "m15_issues_atomic_writes",
+      "community": 4,
+      "norm_label": "atomic write pattern"
+    },
+    {
+      "label": "Log Rotation and Pruning (A5)",
+      "file_type": "rationale",
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "m15_issues_log_rotation_prune",
+      "community": 0,
+      "norm_label": "log rotation and pruning (a5)"
+    },
+    {
+      "label": "Two Execution Paths Architecture",
+      "file_type": "rationale",
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "boos_architecture_two_paths",
+      "community": 4,
+      "norm_label": "two execution paths architecture"
+    },
+    {
+      "label": "Command Registry Pattern",
+      "file_type": "rationale",
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "boos_command_registry_pattern",
+      "community": 3,
+      "norm_label": "command registry pattern"
+    },
+    {
+      "label": "Capability System (allow_*=0|1)",
+      "file_type": "rationale",
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "boos_capability_system",
+      "community": 6,
+      "norm_label": "capability system (allow_*=0|1)"
+    },
+    {
+      "label": "File-Based IPC",
+      "file_type": "rationale",
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "boos_file_as_interface",
+      "community": 3,
+      "norm_label": "file-based ipc"
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_load_command_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L75",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_build_tools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_ensure_dirs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_write_request",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_wait_for_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_cleanup_old_files",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L145",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_make_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L153",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_build_command_list_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L161",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_format_tool_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_run_conversation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L284",
+      "weight": 1.0,
+      "source": "ai_client_py",
+      "target": "minimallinuxcore_ai_client_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L172",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_load_command_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_62",
+      "target": "minimallinuxcore_ai_client_load_command_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L173",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_build_tools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L76",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_76",
+      "target": "minimallinuxcore_ai_client_build_tools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_write_request",
+      "target": "minimallinuxcore_ai_client_ensure_dirs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L263",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_write_request",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_115",
+      "target": "minimallinuxcore_ai_client_write_request",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L265",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_wait_for_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_125",
+      "target": "minimallinuxcore_ai_client_wait_for_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L181",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_cleanup_old_files",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L136",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_136",
+      "target": "minimallinuxcore_ai_client_cleanup_old_files",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L171",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_make_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L174",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_build_command_list_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L154",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_154",
+      "target": "minimallinuxcore_ai_client_build_command_list_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L267",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_run_conversation",
+      "target": "minimallinuxcore_ai_client_format_tool_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L162",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_162",
+      "target": "minimallinuxcore_ai_client_format_tool_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L291",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_main",
+      "target": "minimallinuxcore_ai_client_run_conversation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "ai-client.py",
+      "source_location": "L170",
+      "weight": 1.0,
+      "source": "minimallinuxcore_ai_client_rationale_170",
+      "target": "minimallinuxcore_ai_client_run_conversation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/build-rust.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_build_rust_sh",
+      "target": "users_hostsjim_project_minimallinuxcore_scripts_build_rust_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_verify_sh",
+      "target": "users_hostsjim_project_minimallinuxcore_scripts_verify_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "scripts_verify_sh",
+      "target": "scripts_verify_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "scripts_verify_sh",
+      "target": "scripts_verify_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "scripts_verify_sh",
+      "target": "scripts_verify_check_denied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L48",
+      "weight": 1.0,
+      "context": "call",
+      "source": "users_hostsjim_project_minimallinuxcore_scripts_verify_sh__entry",
+      "target": "scripts_verify_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L79",
+      "weight": 1.0,
+      "context": "call",
+      "source": "users_hostsjim_project_minimallinuxcore_scripts_verify_sh__entry",
+      "target": "scripts_verify_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/verify.sh",
+      "source_location": "L123",
+      "weight": 1.0,
+      "context": "call",
+      "source": "users_hostsjim_project_minimallinuxcore_scripts_verify_sh__entry",
+      "target": "scripts_verify_check_denied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/build-rootfs.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_build_rootfs_sh",
+      "target": "users_hostsjim_project_minimallinuxcore_scripts_build_rootfs_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/run-qemu.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "scripts_run_qemu_sh",
+      "target": "users_hostsjim_project_minimallinuxcore_scripts_run_qemu_sh__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_help",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_list_commands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_status",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L105",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_set_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_caps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_result_by_id",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L165",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_show_results",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L235",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_prune_results",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L291",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_rotate_logs_cmd",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L312",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_check_enabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L323",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_run_builtin",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L401",
+      "weight": 1.0,
+      "source": "src_rust_src_exec_rs",
+      "target": "src_exec_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L325",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_help",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L326",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_list_commands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:32",
+      "weight": 1.0,
+      "source": "src_exec_list_commands",
+      "target": "src_registry_load_commands"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L327",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_status",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L332",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L336",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_set_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L328",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L329",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_caps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L367",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_result_by_id",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L360",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_show_results",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:183",
+      "weight": 1.0,
+      "source": "src_exec_show_results",
+      "target": "src_registry_parse_kv_file"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L392",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_prune_results",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_log_rotation_prune",
+      "target": "src_exec_prune_results"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "L393",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_exec_rotate_logs_cmd",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:421",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_exec_main",
+      "target": "src_exec_check_enabled"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:313",
+      "weight": 1.0,
+      "source": "src_exec_check_enabled",
+      "target": "src_registry_is_enabled"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:318",
+      "weight": 1.0,
+      "source": "src_exec_check_enabled",
+      "target": "src_log_denied"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:422",
+      "weight": 1.0,
+      "source": "src_exec_check_enabled",
+      "target": "src_config_exit_codes"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_capability_system",
+      "target": "src_exec_check_enabled"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:431",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_exec_main",
+      "target": "src_exec_run_builtin"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:344",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_submit_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:355",
+      "weight": 1.0,
+      "source": "src_exec_run_builtin",
+      "target": "src_process_main"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "src/rust/src/main.rs:21",
+      "weight": 1.0,
+      "source": "src_main_main",
+      "target": "src_exec_main"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:412",
+      "weight": 1.0,
+      "source": "src_exec_main",
+      "target": "src_registry_find_command"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:425",
+      "weight": 1.0,
+      "source": "src_exec_main",
+      "target": "src_log_allowed"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "src/rust/src/exec.rs",
+      "source_location": "src/rust/src/exec.rs:417",
+      "weight": 1.0,
+      "source": "src_exec_main",
+      "target": "src_config_exit_codes"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:224",
+      "weight": 1.0,
+      "source": "src_process_main",
+      "target": "src_exec_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "src/rust/src/gateway.rs:80",
+      "weight": 1.0,
+      "source": "src_gateway_handle_connection",
+      "target": "src_exec_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_architecture_two_paths",
+      "target": "src_exec_main"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_command",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_paramdef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_load_commands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_is_enabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_find_command",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L146",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_kv_file_empty",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L158",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_kv_file_comments",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L177",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L190",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_params_multiple",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L200",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_params_empty",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L209",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_parse_params_default_required",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L217",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_is_enabled_nonexistent_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L224",
+      "weight": 1.0,
+      "source": "src_rust_src_registry_rs",
+      "target": "src_registry_test_command_backward_compat",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_command_registry_pattern",
+      "target": "src_registry_command"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "src_registry_load_commands",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "src_registry_is_enabled",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_kv_file",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_kv_file_empty",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_kv_file_comments",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L236",
+      "weight": 1.0,
+      "source": "src_registry_test_command_backward_compat",
+      "target": "src_registry_parse_kv_file",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:164",
+      "weight": 1.0,
+      "source": "src_process_main",
+      "target": "src_registry_parse_kv_file"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_file_as_interface",
+      "target": "src_registry_parse_kv_file"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "src_registry_load_commands",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "src_registry_find_command",
+      "target": "src_registry_load_commands",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_command_registry_pattern",
+      "target": "src_registry_load_commands"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L178",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_params",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L191",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_params_multiple",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L201",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_params_empty",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/registry.rs",
+      "source_location": "L211",
+      "weight": 1.0,
+      "source": "src_registry_test_parse_params_default_required",
+      "target": "src_registry_parse_params",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_capability_system",
+      "target": "src_registry_is_enabled"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_maybe_rotate_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_write_log_bytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L60",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_tracelevel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_get_trace_level",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_uptime_secs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_json_escape",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_log_event",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_log_allowed",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L168",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_log_denied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L173",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_log_unknown",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L178",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L184",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_append_log_line",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L191",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_duration_ms",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L200",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_normal_string",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L206",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_quotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L211",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_backslash",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L216",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_newline",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L221",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_control_chars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L227",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_json_escape_combined",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L239",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_duration_ms",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L246",
+      "weight": 1.0,
+      "source": "src_rust_src_log_rs",
+      "target": "src_log_test_duration_ms_zero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "src_log_write_log_bytes",
+      "target": "src_log_maybe_rotate_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "src/rust/src/log.rs:14",
+      "weight": 1.0,
+      "source": "src_log_maybe_rotate_log",
+      "target": "src_config_limits"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_log_rotation_prune",
+      "target": "src_log_maybe_rotate_log"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "src_log_log_event",
+      "target": "src_log_write_log_bytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L164",
+      "weight": 1.0,
+      "source": "src_log_log_allowed",
+      "target": "src_log_write_log_bytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L187",
+      "weight": 1.0,
+      "source": "src_log_append_log_line",
+      "target": "src_log_write_log_bytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "src_log_log_event",
+      "target": "src_log_get_trace_level",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "src_log_log_allowed",
+      "target": "src_log_get_trace_level",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:137",
+      "weight": 1.0,
+      "source": "src_process_main",
+      "target": "src_log_get_trace_level"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "src_log_log_event",
+      "target": "src_log_uptime_secs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L140",
+      "weight": 1.0,
+      "source": "src_log_log_allowed",
+      "target": "src_log_uptime_secs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "src_log_log_denied",
+      "target": "src_log_json_escape",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L174",
+      "weight": 1.0,
+      "source": "src_log_log_unknown",
+      "target": "src_log_json_escape",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L229",
+      "weight": 1.0,
+      "source": "src_log_test_json_escape_combined",
+      "target": "src_log_json_escape",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "src_log_log_denied",
+      "target": "src_log_log_event",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L174",
+      "weight": 1.0,
+      "source": "src_log_log_unknown",
+      "target": "src_log_log_event",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/log.rs",
+      "source_location": "L179",
+      "weight": 1.0,
+      "source": "src_log_log",
+      "target": "src_log_log_event",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:201",
+      "weight": 1.0,
+      "source": "src_process_main",
+      "target": "src_log_append_log_line"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:231",
+      "weight": 1.0,
+      "source": "src_process_main",
+      "target": "src_log_duration_ms"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "src_rust_src_gateway_rs",
+      "target": "src_gateway_get_auth_token",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "src_rust_src_gateway_rs",
+      "target": "src_gateway_handle_connection",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "L99",
+      "weight": 1.0,
+      "source": "src_rust_src_gateway_rs",
+      "target": "src_gateway_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "src/rust/src/gateway.rs:105",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_gateway_main",
+      "target": "src_gateway_get_auth_token"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "src/rust/src/gateway.rs:142",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_gateway_main",
+      "target": "src_gateway_handle_connection"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "src/rust/src/main.rs:23",
+      "weight": 1.0,
+      "source": "src_main_main",
+      "target": "src_gateway_main"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "src/rust/src/gateway.rs",
+      "source_location": "src/rust/src/gateway.rs:131",
+      "weight": 1.0,
+      "source": "src_gateway_main",
+      "target": "src_config_limits"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_gateway_concurrency",
+      "target": "src_gateway_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_audit_report",
+      "target": "src_gateway_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_architecture_two_paths",
+      "target": "src_gateway_main"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_random_suffix",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_generate_id",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_test_generate_id_format",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_test_generate_id_uniqueness_rapid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L153",
+      "weight": 1.0,
+      "source": "src_rust_src_submit_rs",
+      "target": "src_submit_test_random_suffix_varies",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L155",
+      "weight": 1.0,
+      "source": "src_submit_test_random_suffix_varies",
+      "target": "src_submit_random_suffix",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "src/rust/src/submit.rs:36",
+      "weight": 1.0,
+      "source": "src_submit_generate_id",
+      "target": "src_submit_random_suffix"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "src/rust/src/submit.rs:57",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_submit_main",
+      "target": "src_submit_generate_id"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "src_submit_test_generate_id_format",
+      "target": "src_submit_generate_id",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/submit.rs",
+      "source_location": "L143",
+      "weight": 1.0,
+      "source": "src_submit_test_generate_id_uniqueness_rapid",
+      "target": "src_submit_generate_id",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "src/rust/src/main.rs:20",
+      "weight": 1.0,
+      "source": "src_main_main",
+      "target": "src_submit_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_atomic_writes",
+      "target": "src_submit_main"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_architecture_two_paths",
+      "target": "src_submit_main"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "src_rust_src_main_rs",
+      "target": "src_main_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/main.rs",
+      "source_location": "src/rust/src/main.rs:22",
+      "weight": 1.0,
+      "source": "src_main_main",
+      "target": "src_process_main"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "src_rust_src_process_rs",
+      "target": "src_process_capture_output",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "src_rust_src_process_rs",
+      "target": "src_process_files_changed_since",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L96",
+      "weight": 1.0,
+      "source": "src_rust_src_process_rs",
+      "target": "src_process_walk_dir",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L132",
+      "weight": 1.0,
+      "source": "src_rust_src_process_rs",
+      "target": "src_process_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:224",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_process_main",
+      "target": "src_process_capture_output"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:32",
+      "weight": 1.0,
+      "source": "src_process_capture_output",
+      "target": "src_config_limits"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_audit_report",
+      "target": "src_process_capture_output"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "L92",
+      "weight": 1.0,
+      "source": "src_process_files_changed_since",
+      "target": "src_process_walk_dir",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/rust/src/process.rs",
+      "source_location": "src/rust/src/process.rs:243",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_process_main",
+      "target": "src_process_files_changed_since"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": ".claude/skills/boos-dev.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "boos_architecture_two_paths",
+      "target": "src_process_main"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_ai_client",
+      "target": "ai_client_conversation_loop"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "ai_client_command_registry_loader"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_command_registry_concept",
+      "target": "ai_client_command_registry_loader"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "ai_client_tool_builder"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "ai_client_request_writer"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_request_queue_concept",
+      "target": "ai_client_request_writer"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "ai_client_result_poller"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "plan_request_queue_concept"
+    },
+    {
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "ai-client.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "ai_client_conversation_loop",
+      "target": "bin_mock_ai_driver_driver"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/init",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "rootfs_init_init_script",
+      "target": "bin_boos_supervisor_supervisor"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/init",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "rootfs_init_init_script",
+      "target": "bin_boos_shell_shell"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "readme_boot_chain",
+      "target": "rootfs_init_init_script"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/bin/mock-ai-driver",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "bin_mock_ai_driver_driver",
+      "target": "plan_boos_submit"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/bin/boos-daemon",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "bin_boos_daemon_daemon",
+      "target": "plan_boos_process"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/bin/boos-shell",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "bin_boos_shell_shell",
+      "target": "plan_boos_exec"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "scripts/build-rootfs.sh",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "scripts_build_rootfs_build_script",
+      "target": "scripts_build_rust_build_script"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "scripts/run-qemu.sh",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "scripts_run_qemu_qemu_runner",
+      "target": "scripts_build_rootfs_build_script"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_design_philosophy",
+      "target": "readme_bos_concept"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_core_loop",
+      "target": "readme_action_pipeline"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_design_philosophy",
+      "target": "plan_core_loop"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_structured_observability",
+      "target": "plan_request_queue_concept"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_rust_rewrite",
+      "target": "plan_boos_exec"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_rust_rewrite",
+      "target": "plan_boos_process"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_rust_rewrite",
+      "target": "plan_boos_submit"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_rust_rewrite",
+      "target": "plan_boos_gateway"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "PLAN.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "plan_executor_split",
+      "target": "plan_boos_exec"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_exit_code_contract",
+      "target": "src_config_exit_codes"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "M15-ISSUES.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "m15_issues_audit_report",
+      "target": "src_config_exit_codes"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "system_boot_sequence",
+      "label": "System Boot Sequence",
+      "nodes": [
+        "rootfs_init_init_script",
+        "bin_boos_supervisor_supervisor",
+        "bin_boos_shell_shell"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "rootfs/init"
+    },
+    {
+      "id": "request_pipeline",
+      "label": "Request Pipeline",
+      "nodes": [
+        "bin_mock_ai_driver_driver",
+        "bin_boos_daemon_daemon",
+        "ai_client_conversation_loop",
+        "plan_request_queue_concept"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "PLAN.md"
+    },
+    {
+      "id": "rust_core_components",
+      "label": "Rust Core Components",
+      "nodes": [
+        "plan_boos_exec",
+        "plan_boos_process",
+        "plan_boos_submit",
+        "plan_boos_gateway"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "PLAN.md"
+    },
+    {
+      "id": "boos_request_lifecycle",
+      "label": "Request Lifecycle Pipeline",
+      "nodes": [
+        "src_submit_main",
+        "src_process_main",
+        "src_exec_main",
+        "src_exec_run_builtin",
+        "src_exec_check_enabled",
+        "src_gateway_handle_connection"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/boos-dev.md"
+    },
+    {
+      "id": "boos_registry_capability",
+      "label": "Registry and Capability System",
+      "nodes": [
+        "src_registry_command",
+        "src_registry_load_commands",
+        "src_registry_find_command",
+        "src_registry_is_enabled",
+        "src_registry_parse_kv_file",
+        "src_exec_check_enabled",
+        "boos_command_registry_pattern",
+        "boos_capability_system"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/boos-dev.md"
+    },
+    {
+      "id": "boos_logging_subsystem",
+      "label": "Logging Subsystem",
+      "nodes": [
+        "src_log_write_log_bytes",
+        "src_log_event",
+        "src_log_allowed",
+        "src_log_denied",
+        "src_log_append_log_line",
+        "src_log_maybe_rotate_log",
+        "src_log_get_trace_level",
+        "src_log_tracelevel"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/rust/src/log.rs"
+    }
+  ],
+  "built_at_commit": "c6e9b6875f7af4d76b52ea0f1daf32e5e2ccb85a"
+}

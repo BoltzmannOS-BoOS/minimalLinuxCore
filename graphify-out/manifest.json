@@ -1,0 +1,132 @@
+{
+  "/Users/hostsjim/project/minimalLinuxCore/ai-client.py": {
+    "mtime": 1779535805.0526369,
+    "ast_hash": "a66fa1c13d872b1d834e88ba3d9d0a56",
+    "semantic_hash": "a66fa1c13d872b1d834e88ba3d9d0a56"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/rootfs/init": {
+    "mtime": 1779719578.0023875,
+    "ast_hash": "1952385615d9da31f2efa3a9aefa0753",
+    "semantic_hash": "1952385615d9da31f2efa3a9aefa0753"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/rootfs/bin/mock-ai-driver": {
+    "mtime": 1779719577.9989326,
+    "ast_hash": "95726bfe826ff4bc402dcae6781f6491",
+    "semantic_hash": "95726bfe826ff4bc402dcae6781f6491"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/rootfs/bin/boos-daemon": {
+    "mtime": 1779719577.9952228,
+    "ast_hash": "056c43a421131ac91f0df6f705f3ac45",
+    "semantic_hash": "056c43a421131ac91f0df6f705f3ac45"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/rootfs/bin/boos-supervisor": {
+    "mtime": 1779719577.9980776,
+    "ast_hash": "34ccb7a421ae6dd60b45409e68a38e1d",
+    "semantic_hash": "34ccb7a421ae6dd60b45409e68a38e1d"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/rootfs/bin/boos-shell": {
+    "mtime": 1779719577.9975164,
+    "ast_hash": "bbfc0d66a50eb9ea206fcda9d4d309fa",
+    "semantic_hash": "bbfc0d66a50eb9ea206fcda9d4d309fa"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/scripts/build-rust.sh": {
+    "mtime": 1779719578.0030425,
+    "ast_hash": "a5f717768a9bf46279f1f8a2596eadbf",
+    "semantic_hash": "a5f717768a9bf46279f1f8a2596eadbf"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/scripts/verify.sh": {
+    "mtime": 1779719578.004087,
+    "ast_hash": "41ed06f28528e24091352c02434caeb5",
+    "semantic_hash": "41ed06f28528e24091352c02434caeb5"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/scripts/build-rootfs.sh": {
+    "mtime": 1779719578.002842,
+    "ast_hash": "bfaecb97643d8c2e8f24244d9cb95a52",
+    "semantic_hash": "bfaecb97643d8c2e8f24244d9cb95a52"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/scripts/run-qemu.sh": {
+    "mtime": 1779719578.003578,
+    "ast_hash": "f9e54bb4e184ec5ab98e990b379bf858",
+    "semantic_hash": "f9e54bb4e184ec5ab98e990b379bf858"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/exec.rs": {
+    "mtime": 1779719578.0059803,
+    "ast_hash": "6ce647eafcb40bd0d31cf6482755d646",
+    "semantic_hash": "6ce647eafcb40bd0d31cf6482755d646"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/registry.rs": {
+    "mtime": 1779719578.0083516,
+    "ast_hash": "5c66b02cd48bc046b04f797fece627cc",
+    "semantic_hash": "5c66b02cd48bc046b04f797fece627cc"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/config.rs": {
+    "mtime": 1779719578.0052052,
+    "ast_hash": "d9d49b00373799bf67543ef87766d3da",
+    "semantic_hash": "d9d49b00373799bf67543ef87766d3da"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/log.rs": {
+    "mtime": 1779719578.0064836,
+    "ast_hash": "19ce9c3fe15b0e9beebef73f6258489f",
+    "semantic_hash": "19ce9c3fe15b0e9beebef73f6258489f"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/gateway.rs": {
+    "mtime": 1779719578.006229,
+    "ast_hash": "6404a64f797f3c03e379bce8a531c3c2",
+    "semantic_hash": "6404a64f797f3c03e379bce8a531c3c2"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/submit.rs": {
+    "mtime": 1779719578.0087733,
+    "ast_hash": "552dbb2630f66359f47f20e0ade8128f",
+    "semantic_hash": "552dbb2630f66359f47f20e0ade8128f"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/main.rs": {
+    "mtime": 1779719578.007071,
+    "ast_hash": "af30998874679607cc2edae7cbe5d033",
+    "semantic_hash": "af30998874679607cc2edae7cbe5d033"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/src/rust/src/process.rs": {
+    "mtime": 1779719578.0074027,
+    "ast_hash": "a652ff5618b20b3a34b7ce91120f01ae",
+    "semantic_hash": "a652ff5618b20b3a34b7ce91120f01ae"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/README.md": {
+    "mtime": 1779532747.9768498,
+    "ast_hash": "b3111ccc659064e38deca5ccc88504e3",
+    "semantic_hash": "b3111ccc659064e38deca5ccc88504e3"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/M15-ISSUES.md": {
+    "mtime": 1779719577.9770079,
+    "ast_hash": "c4d4c077c4838f2edfc781c973877608",
+    "semantic_hash": "c4d4c077c4838f2edfc781c973877608"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/PLAN.md": {
+    "mtime": 1779719577.9777613,
+    "ast_hash": "745a081670e2dd793429ac081ea0d2e5",
+    "semantic_hash": "745a081670e2dd793429ac081ea0d2e5"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/.claude/skills/boos-dev.md": {
+    "mtime": 1779534446.2835345,
+    "ast_hash": "14f52685861ea08c8ad6ea0ab06a47a5",
+    "semantic_hash": "14f52685861ea08c8ad6ea0ab06a47a5"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/docs/architecture.md": {
+    "mtime": 1779532748.0036263,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/docs/vision.md": {
+    "mtime": 1779532748.0037644,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/docs/milestones.md": {
+    "mtime": 1779532748.0036957,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/hostsjim/project/minimalLinuxCore/bug-reports/deepseek-v4-repetition-bug.md": {
+    "mtime": 1779719577.978107,
+    "ast_hash": "d83209b13f89fcaa234ce3c8f67fa4e4",
+    "semantic_hash": "d83209b13f89fcaa234ce3c8f67fa4e4"
+  }
+}
