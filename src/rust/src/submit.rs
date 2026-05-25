@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -8,16 +8,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::config;
 use crate::log;
 
-/// Generate a unique request ID: req-<ms>-<random4>
+/// Read 4 random bytes from /dev/urandom. Falls back to a PID/uptime mix
+/// if /dev/urandom is unreadable (extremely rare on Linux; would imply a
+/// broken initramfs).
+fn random_suffix() -> u32 {
+    if let Ok(mut f) = fs::File::open("/dev/urandom") {
+        let mut buf = [0u8; 4];
+        if f.read_exact(&mut buf).is_ok() {
+            return u32::from_le_bytes(buf);
+        }
+    }
+    let uptime = (log::uptime_secs() * 1_000_000.0) as u64;
+    let pid = process::id() as u64;
+    ((uptime ^ pid) & 0xFFFF_FFFF) as u32
+}
+
+/// Generate a unique request ID: req-<ms>-<random8hex>.
+/// Millis disambiguates across seconds; the random suffix disambiguates
+/// within the same millisecond. The O_EXCL retry in `main` is the final
+/// safety net against the astronomically rare collision.
 fn generate_id() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis();
-    // Simple random suffix using /proc/uptime fractional + PID
-    let uptime = log::uptime_secs();
-    let suffix = ((uptime * 10000.0) as u64) % 10000;
-    format!("req-{}-{:04}", now, suffix)
+    format!("req-{}-{:08x}", now, random_suffix())
 }
 
 pub fn main() {
@@ -108,49 +123,38 @@ mod tests {
     #[test]
     fn test_generate_id_format() {
         let id = generate_id();
-        // Format: req-<ms>-<4-digit-suffix>
         assert!(id.starts_with("req-"), "ID should start with 'req-': {}", id);
         let parts: Vec<&str> = id.split('-').collect();
         assert_eq!(parts.len(), 3, "ID should have 3 dash-separated parts: {}", id);
-        // Last part should be 4 digits
         let suffix = parts.last().unwrap();
-        assert_eq!(suffix.len(), 4, "suffix should be 4 digits: {}", id);
-        assert!(suffix.chars().all(|c| c.is_ascii_digit()), "suffix should be digits: {}", id);
-        // Middle part should be the timestamp (13 digits for millis)
+        assert_eq!(suffix.len(), 8, "suffix should be 8 hex chars: {}", id);
+        assert!(suffix.chars().all(|c| c.is_ascii_hexdigit()),
+            "suffix should be hex: {}", id);
         assert!(parts[1].len() >= 10, "timestamp part too short: {}", id);
     }
 
     #[test]
-    fn test_generate_id_uniqueness_with_small_delay() {
-        // BUG: generate_id() uses SystemTime::now().as_millis() + deterministic suffix.
-        // Rapid calls within the same millisecond produce identical IDs.
-        // The O_EXCL + retry loop in submit_main() compensates for this.
-        // This test documents the limitation by sleeping between calls.
+    fn test_generate_id_uniqueness_rapid() {
+        // With a 32-bit /dev/urandom suffix, 1000 rapid calls colliding by
+        // birthday paradox is ~1 in 8000. We allow at most one collision so
+        // a transient failure of /dev/urandom (extremely rare) doesn't fail CI.
         let mut ids = Vec::new();
-        for _ in 0..10 {
+        for _ in 0..1000 {
             ids.push(generate_id());
-            std::thread::sleep(std::time::Duration::from_millis(1));
         }
         let unique: std::collections::HashSet<_> = ids.iter().collect();
-        assert_eq!(unique.len(), ids.len(),
-            "IDs should be unique with 1ms delay (got {} unique out of {})",
-            unique.len(), ids.len());
+        let collisions = ids.len() - unique.len();
+        assert!(collisions <= 1,
+            "too many ID collisions: {} out of {} (suffix entropy broken?)",
+            collisions, ids.len());
     }
 
     #[test]
-    #[should_panic(expected = "collisions documented")]
-    fn test_generate_id_collisions_without_delay() {
-        // This test DOCUMENTS a known limitation: without delays,
-        // generate_id() can produce collisions. The O_EXCL retry in
-        // submit_main() is the actual safety net.
-        let mut ids = Vec::new();
-        for _ in 0..100 {
-            ids.push(generate_id());
-        }
-        let unique: std::collections::HashSet<_> = ids.iter().collect();
-        if unique.len() < ids.len() {
-            panic!("collisions documented: {} unique out of {}",
-                unique.len(), ids.len());
-        }
+    fn test_random_suffix_varies() {
+        // Two consecutive reads from /dev/urandom should almost always differ.
+        let a = random_suffix();
+        let b = random_suffix();
+        // Very rare 1-in-2^32 false positive is acceptable for this test.
+        assert_ne!(a, b, "random_suffix produced identical consecutive values: {}", a);
     }
 }

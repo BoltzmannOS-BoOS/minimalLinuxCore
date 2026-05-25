@@ -2,6 +2,8 @@ use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::config;
 use crate::log;
@@ -116,14 +118,30 @@ pub fn main() {
         ("auth", auth_msg),
     ]);
 
-    // Accept connections (single-threaded; sufficient for AI usage)
+    let token = Arc::new(token);
+    let in_flight = Arc::new(AtomicUsize::new(0));
+
+    // Each connection runs in its own OS thread. A bounded counter caps
+    // concurrency at MAX_GATEWAY_THREADS so a burst can't fork-bomb the VM;
+    // overflow connections are answered with a short "BUSY" line and closed.
     for stream in listener.incoming() {
         match stream {
-            Ok(s) => {
-                let tok = token.clone();
-                // Handle each connection; don't spawn thread (no tokio)
-                // Use a simple process-based approach
-                handle_connection(s, &tok);
+            Ok(mut s) => {
+                let count = in_flight.fetch_add(1, Ordering::SeqCst);
+                if count >= config::MAX_GATEWAY_THREADS {
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    let _ = writeln!(s, "BUSY");
+                    log::log("boos-gateway", "busy", &[
+                        ("in_flight", &count.to_string()),
+                    ]);
+                    continue;
+                }
+                let tok = Arc::clone(&token);
+                let counter = Arc::clone(&in_flight);
+                std::thread::spawn(move || {
+                    handle_connection(s, &tok);
+                    counter.fetch_sub(1, Ordering::SeqCst);
+                });
             }
             Err(e) => {
                 log::log("boos-gateway", "accept_error", &[

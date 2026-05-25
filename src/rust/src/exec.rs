@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process;
 
-use crate::config;
+use crate::config::{self, EXIT_ALLOWED, EXIT_DENIED, EXIT_ERROR, EXIT_UNKNOWN};
 use crate::log::{self, TraceLevel};
 use crate::registry;
 
@@ -21,14 +21,53 @@ fn show_help() {
     println!("  results             show request results");
     println!("  result <id>         show full result by id");
     println!("  daemons             show daemon health");
+    println!("  prune [days]        delete result files older than N days");
+    println!("  rotate-logs         force log rotation");
     println!("  shell               enter raw BusyBox shell");
     println!("  poweroff            power off system");
 }
 
-fn list_commands() {
+fn list_commands(args: &str) {
+    let want_json = args.split_whitespace().any(|a| a == "--json" || a == "json");
+    let commands = registry::load_commands();
+
+    if want_json {
+        // Emit a JSON array of {name, description, enable_flag, params:[{name,required}]}.
+        // AI clients use this to build proper tool definitions with parameters.
+        let mut out = String::from("[");
+        for (i, cmd) in commands.iter().enumerate() {
+            if i > 0 { out.push(','); }
+            out.push_str(&format!(
+                "{{\"name\":\"{}\",\"description\":\"{}\",\"enable_flag\":\"{}\",\"params\":[",
+                log::json_escape(&cmd.name),
+                log::json_escape(&cmd.description),
+                log::json_escape(&cmd.enable_flag),
+            ));
+            for (j, p) in cmd.params.iter().enumerate() {
+                if j > 0 { out.push(','); }
+                out.push_str(&format!(
+                    "{{\"name\":\"{}\",\"required\":{}}}",
+                    log::json_escape(&p.name),
+                    p.required,
+                ));
+            }
+            out.push_str("]}");
+        }
+        out.push(']');
+        println!("{}", out);
+        return;
+    }
+
     println!("Available registered commands:");
-    for cmd in registry::load_commands() {
-        println!("  {} — {}", cmd.name, cmd.description);
+    for cmd in &commands {
+        if cmd.params.is_empty() {
+            println!("  {} — {}", cmd.name, cmd.description);
+        } else {
+            let p_str: Vec<String> = cmd.params.iter()
+                .map(|p| if p.required { format!("<{}>", p.name) } else { format!("[{}]", p.name) })
+                .collect();
+            println!("  {} {} — {}", cmd.name, p_str.join(" "), cmd.description);
+        }
     }
 }
 
@@ -86,11 +125,11 @@ fn set_debug(level: &str) -> i32 {
             }
             println!("Trace level set to: {}", level);
             log::log("boos-exec", "config", &[("trace_level", level)]);
-            0
+            EXIT_ALLOWED
         }
         _ => {
             eprintln!("Invalid level: {}. Use quiet, normal, or verbose.", level);
-            1
+            EXIT_ERROR
         }
     }
 }
@@ -114,11 +153,11 @@ fn show_result_by_id(id: &str) -> i32 {
     match fs::read_to_string(&path) {
         Ok(content) => {
             print!("{}", content);
-            0
+            EXIT_ALLOWED
         }
         Err(_) => {
             eprintln!("No result found for: {}", id);
-            1
+            EXIT_ERROR
         }
     }
 }
@@ -190,6 +229,84 @@ fn show_results() {
     }
 }
 
+/// Delete result files in /var/boos/results older than `days` days.
+/// Default 7 days. Per the "observe, don't obstruct" philosophy this is
+/// manual — the AI or human triggers it; nothing runs automatically.
+fn prune_results(args: &str) -> i32 {
+    use std::time::{SystemTime, UNIX_EPOCH, Duration};
+
+    let days: u64 = args.split_whitespace().next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(7);
+    let cutoff = match SystemTime::now().checked_sub(Duration::from_secs(days * 86_400)) {
+        Some(t) => t,
+        None => {
+            eprintln!("Invalid days value: {}", days);
+            return EXIT_ERROR;
+        }
+    };
+    let cutoff_epoch = cutoff.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let dir = match fs::read_dir(config::RESULT_DIR) {
+        Ok(d) => d,
+        Err(_) => {
+            println!("No results directory.");
+            return EXIT_ALLOWED;
+        }
+    };
+
+    let mut removed = 0u32;
+    let mut kept = 0u32;
+    for entry in dir.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.extension().map_or(true, |e| e != "out") {
+            continue;
+        }
+        let too_old = entry.metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() < cutoff_epoch)
+            .unwrap_or(false);
+        if too_old {
+            if fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        } else {
+            kept += 1;
+        }
+    }
+    println!("Pruned {} result(s) older than {} days; kept {}.", removed, days, kept);
+    log::log("boos-exec", "prune", &[
+        ("days", &days.to_string()),
+        ("removed", &removed.to_string()),
+        ("kept", &kept.to_string()),
+    ]);
+    EXIT_ALLOWED
+}
+
+/// Force a log rotation regardless of current size.
+fn rotate_logs_cmd() -> i32 {
+    for i in (1..config::MAX_LOG_BACKUPS).rev() {
+        let from = format!("{}.{}", config::LOG_FILE, i);
+        let to = format!("{}.{}", config::LOG_FILE, i + 1);
+        let _ = fs::rename(&from, &to);
+    }
+    match fs::rename(config::LOG_FILE, format!("{}.1", config::LOG_FILE)) {
+        Ok(_) => {
+            println!("Rotated {} -> {}.1", config::LOG_FILE, config::LOG_FILE);
+            log::log("boos-exec", "rotate_logs", &[("status", "ok")]);
+            EXIT_ALLOWED
+        }
+        Err(e) => {
+            eprintln!("Rotation failed: {}", e);
+            EXIT_ERROR
+        }
+    }
+}
+
 /// Check if an enable flag is set, print denial if not.
 /// Returns true if allowed.
 fn check_enabled(flag: &str, name: &str) -> bool {
@@ -202,20 +319,19 @@ fn check_enabled(flag: &str, name: &str) -> bool {
     false
 }
 
-/// Run a builtin command. Returns exit code.
+/// Run a builtin command. Returns one of the EXIT_* constants from config.
 fn run_builtin(exec_target: &str, args: &str) -> i32 {
     match exec_target {
-        "__builtin_help" => { show_help(); 0 }
-        "__builtin_commands" => { list_commands(); 0 }
-        "__builtin_status" => { show_status(); 0 }
-        "__builtin_log" => { show_log(); 0 }
-        "__builtin_caps" => { show_caps(); 0 }
+        "__builtin_help" => { show_help(); EXIT_ALLOWED }
+        "__builtin_commands" => { list_commands(args); EXIT_ALLOWED }
+        "__builtin_status" => { show_status(); EXIT_ALLOWED }
+        "__builtin_log" => { show_log(); EXIT_ALLOWED }
+        "__builtin_caps" => { show_caps(); EXIT_ALLOWED }
         "__builtin_debug" => {
             if args.is_empty() {
                 show_debug();
-                0
+                EXIT_ALLOWED
             } else {
-                // Take first word as level
                 let level = args.split_whitespace().next().unwrap_or("");
                 set_debug(level)
             }
@@ -223,30 +339,29 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_submit" => {
             if args.is_empty() {
                 eprintln!("Usage: submit <command> [args...]");
-                1
+                EXIT_ERROR
             } else {
-                // Call boos-submit binary with the args
                 let mut cmd = process::Command::new("/bin/boos-submit");
                 for arg in args.split_whitespace() {
                     cmd.arg(arg);
                 }
                 match cmd.status() {
-                    Ok(s) => s.code().unwrap_or(1),
-                    Err(e) => { eprintln!("submit error: {}", e); 1 }
+                    Ok(s) => s.code().unwrap_or(EXIT_ERROR),
+                    Err(e) => { eprintln!("submit error: {}", e); EXIT_ERROR }
                 }
             }
         }
         "__builtin_process" => {
             match process::Command::new("/bin/boos-process").status() {
-                Ok(s) => s.code().unwrap_or(1),
-                Err(_) => 1,
+                Ok(s) => s.code().unwrap_or(EXIT_ERROR),
+                Err(_) => EXIT_ERROR,
             }
         }
-        "__builtin_results" => { show_results(); 0 }
+        "__builtin_results" => { show_results(); EXIT_ALLOWED }
         "__builtin_result" => {
             if args.is_empty() {
                 eprintln!("Usage: result <id>");
-                1
+                EXIT_ERROR
             } else {
                 let id = args.split_whitespace().next().unwrap_or("");
                 show_result_by_id(id)
@@ -256,8 +371,8 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             println!("Entering raw shell (type 'exit' to return)...");
             let child = process::Command::new("/bin/sh").spawn();
             match child {
-                Ok(mut c) => { let _ = c.wait(); 0 }
-                Err(e) => { eprintln!("shell error: {}", e); 1 }
+                Ok(mut c) => { let _ = c.wait(); EXIT_ALLOWED }
+                Err(e) => { eprintln!("shell error: {}", e); EXIT_ERROR }
             }
         }
         "__builtin_daemons" => {
@@ -265,18 +380,20 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
                 .arg("status")
                 .status()
             {
-                Ok(s) => s.code().unwrap_or(1),
-                Err(_) => 1,
+                Ok(s) => s.code().unwrap_or(EXIT_ERROR),
+                Err(_) => EXIT_ERROR,
             }
         }
         "__builtin_poweroff" => {
             println!("Powering off...");
             let _ = process::Command::new("/bin/poweroff").arg("-f").status();
-            0
+            EXIT_ALLOWED
         }
+        "__builtin_prune" => prune_results(args),
+        "__builtin_rotate_logs" => rotate_logs_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
-            1
+            EXIT_ERROR
         }
     }
 }
@@ -285,49 +402,45 @@ pub fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: boos-exec <command> [args...]");
-        process::exit(1);
+        process::exit(EXIT_ERROR);
     }
 
     let cmd_name = &args[1];
     let cmd_args: Vec<&str> = args[2..].iter().map(|s| s.as_str()).collect();
     let cmd_args_str = cmd_args.join(" ");
 
-    // Look up command in registry
     let cmd = match registry::find_command(cmd_name) {
         Some(c) => c,
         None => {
             eprintln!("Unknown command: {}", cmd_name);
             log::log_unknown(cmd_name);
-            process::exit(1);
+            process::exit(EXIT_UNKNOWN);
         }
     };
 
-    // Capability check (using enable flag)
     if !check_enabled(&cmd.enable_flag, &cmd.name) {
-        process::exit(1);
+        process::exit(EXIT_DENIED);
     }
 
-    // Log allowed execution
     log::log_allowed(&cmd.name, &cmd.description);
 
-    // Update last-cmd for command chaining
     let _ = std::fs::create_dir_all(Path::new(config::LAST_CMD_FILE).parent().unwrap());
     let last_cmd = format!("{} {}", cmd_name, cmd_args_str);
     let _ = fs::write(config::LAST_CMD_FILE, last_cmd.trim());
 
-    // Dispatch
     let exit_code = if cmd.exec.starts_with("__builtin_") {
         run_builtin(&cmd.exec, &cmd_args_str)
     } else {
-        // External executable (only if explicitly registered with exec=)
+        // External binary registered via `exec=/path/...`. Its exit code is
+        // passed through verbatim; process.rs maps non-{0,1,3} → "error".
         match process::Command::new(&cmd.exec)
             .args(&args[2..])
             .status()
         {
-            Ok(s) => s.code().unwrap_or(1),
+            Ok(s) => s.code().unwrap_or(EXIT_ERROR),
             Err(e) => {
                 eprintln!("Failed to execute {}: {}", cmd.exec, e);
-                1
+                EXIT_ERROR
             }
         }
     };

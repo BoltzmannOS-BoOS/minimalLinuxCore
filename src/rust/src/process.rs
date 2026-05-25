@@ -103,8 +103,9 @@ fn walk_dir(dir: &Path, result: &mut Vec<String>, since: f64, depth: u32) -> io:
             let path = entry.path();
             let name = path.to_string_lossy().to_string();
 
-            // Skip our own marker and run dir
-            if name.contains("trace-marker") || name.contains("/var/boos/daemons") {
+            // Skip the daemon run-dir — supervisor writes PID files here on
+            // every health check, which would otherwise show up as fs noise.
+            if name.contains("/var/boos/daemons") {
                 continue;
             }
 
@@ -181,20 +182,16 @@ pub fn main() {
         let prev_cmd = fs::read_to_string(config::LAST_CMD_FILE).unwrap_or_default();
         let prev_cmd = prev_cmd.trim();
 
-        // Verbose: track fs changes
+        // Verbose: record a baseline timestamp so we can scan /var for files
+        // modified during execution. ext2 stores integer-second mtimes, so we
+        // subtract 1s to avoid missing files whose mtime rounds down to the
+        // same second as `now`. Trade-off: at most ~1s of pre-execution
+        // changes may show up as false positives — acceptable for trace data.
         let marker_ts = if trace == log::TraceLevel::Verbose {
-            let marker = format!("/var/trace-marker-{}", std::process::id());
-            if let Ok(f) = fs::File::create(&marker) {
-                drop(f);
-                // Wait briefly for mtime to settle on ext2
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-            // Use SystemTime (UNIX epoch base), not uptime, for comparison
-            // with file mtimes which are also UNIX epoch based.
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f64()
+                .map(|d| d.as_secs_f64() - 1.0)
+                .unwrap_or(0.0)
         } else {
             0.0
         };
@@ -233,16 +230,16 @@ pub fn main() {
         let finished_at = log::uptime_secs();
         let duration = log::duration_ms(started_at, finished_at);
 
-        // Determine verdict from exit code
-        let verdict = if exit_code == 0 {
-            "allowed"
-        } else if exit_code == 1 {
-            "denied"
-        } else {
-            "error"
+        // Map exit code → verdict using the contract from config.rs.
+        // External programs invoked via `exec=` may return arbitrary codes;
+        // anything outside {0,1,3} is recorded as "error".
+        let verdict = match exit_code {
+            config::EXIT_ALLOWED => "allowed",
+            config::EXIT_DENIED => "denied",
+            config::EXIT_UNKNOWN => "unknown",
+            _ => "error",
         };
 
-        // File tracking in verbose mode
         let files_touched = if trace == log::TraceLevel::Verbose && marker_ts > 0.0 {
             let found = files_changed_since(marker_ts);
             if !found.is_empty() {
@@ -251,10 +248,7 @@ pub fn main() {
                     log::uptime_secs(), log::json_escape(&found)
                 ));
             }
-            // Clean marker
-            let marker = format!("/var/trace-marker-{}", std::process::id());
-            let _ = fs::remove_file(&marker);
-            if found.is_empty() { String::new() } else { found }
+            found
         } else {
             String::new()
         };

@@ -1,7 +1,60 @@
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::config;
+
+/// Rotate the log file when it grows past `MAX_LOG_BYTES`. The rotation
+/// shifts `boos.log` → `boos.log.1` → `boos.log.2`, dropping the oldest.
+/// Called opportunistically from `write_log_bytes` after each write.
+///
+/// Errors are intentionally swallowed: the log path is best-effort, and if
+/// rotation fails we'd rather keep appending than panic out.
+fn maybe_rotate_log(current_size: u64) {
+    if current_size < config::MAX_LOG_BYTES {
+        return;
+    }
+    // Shift older backups down: .1 → .2, etc.
+    for i in (1..config::MAX_LOG_BACKUPS).rev() {
+        let from = format!("{}.{}", config::LOG_FILE, i);
+        let to = format!("{}.{}", config::LOG_FILE, i + 1);
+        let _ = fs::rename(&from, &to);
+    }
+    let _ = fs::rename(config::LOG_FILE, format!("{}.1", config::LOG_FILE));
+}
+
+/// Cheap counter to amortise stat() calls. We only check rotation every
+/// LOG_ROTATE_CHECK_EVERY writes — most writes do an append-and-return.
+static LOG_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+const LOG_ROTATE_CHECK_EVERY: u64 = 64;
+
+/// Append a byte slice to the log file, enforcing per-line size and
+/// triggering rotation on overflow. All callers below funnel through here.
+fn write_log_bytes(line: &[u8]) {
+    // Per-line cap: truncate runaway lines so a single bad entry can't fill
+    // the disk. We keep the newline if present.
+    let mut buf: Vec<u8>;
+    let payload = if line.len() > config::MAX_LOG_LINE_LEN {
+        buf = line[..config::MAX_LOG_LINE_LEN - 1].to_vec();
+        buf.push(b'\n');
+        &buf
+    } else {
+        line
+    };
+
+    let mut f = match OpenOptions::new().create(true).append(true).open(config::LOG_FILE) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let _ = f.write_all(payload);
+
+    let n = LOG_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    if n % LOG_ROTATE_CHECK_EVERY == 0 {
+        if let Ok(meta) = f.metadata() {
+            maybe_rotate_log(meta.len());
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum TraceLevel {
@@ -63,7 +116,6 @@ pub fn log_event(component: &str, event: &str, fields: &[(&str, &str)]) {
     let trace = get_trace_level();
 
     if trace == TraceLevel::Quiet {
-        // Only log denials, errors, unknown
         if event != "denied" && event != "error" && event != "unknown" && event != "config" {
             return;
         }
@@ -73,15 +125,12 @@ pub fn log_event(component: &str, event: &str, fields: &[(&str, &str)]) {
     let mut line = format!("{{\"ts\":{:.3},\"component\":\"{}\",\"event\":\"{}\"", ts, component, event);
 
     for (k, v) in fields {
-        // The caller already JSON-escapes v
         line.push_str(&format!(",\"{}\":\"{}\"", k, v));
     }
     line.push('}');
     line.push('\n');
 
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(config::LOG_FILE) {
-        let _ = f.write_all(line.as_bytes());
-    }
+    write_log_bytes(line.as_bytes());
 }
 
 /// Log a permitted command execution. Respects trace level and includes prev_command in verbose.
@@ -112,9 +161,7 @@ pub fn log_allowed(command: &str, desc: &str) {
     line.push('}');
     line.push('\n');
 
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(config::LOG_FILE) {
-        let _ = f.write_all(line.as_bytes());
-    }
+    write_log_bytes(line.as_bytes());
 }
 
 /// Log a denied command.
@@ -133,24 +180,11 @@ pub fn log(component: &str, event: &str, fields: &[(&str, &str)]) {
 }
 
 /// Append an arbitrary line to the operation log (used by process/submit/gateway).
-/// Includes the newline in the same write buffer to prevent interleaving.
+/// The newline is appended atomically so multi-process writers don't interleave.
 pub fn append_log_line(line: &str) {
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(config::LOG_FILE) {
-        // Single write: line + newline in one buffer to prevent interleaving
-        let mut buf = line.as_bytes().to_vec();
-        buf.push(b'\n');
-        let _ = f.write_all(&buf);
-    }
-}
-
-/// Format a timestamp as "HH:MM:SS.mmm" from uptime seconds (naive, just format the float).
-pub fn fmt_ts(ts: f64) -> String {
-    let total_secs = ts as u64;
-    let hours = total_secs / 3600;
-    let mins = (total_secs % 3600) / 60;
-    let secs = total_secs % 60;
-    let ms = ((ts - ts.floor()) * 1000.0) as u64;
-    format!("{:02}:{:02}:{:02}.{:03}", hours, mins, secs, ms)
+    let mut buf = line.as_bytes().to_vec();
+    buf.push(b'\n');
+    write_log_bytes(&buf);
 }
 
 /// Compute duration in milliseconds between two uptime timestamps.
@@ -211,17 +245,5 @@ mod tests {
     #[test]
     fn test_duration_ms_zero() {
         assert_eq!(duration_ms(5.0, 5.0), 0);
-    }
-
-    #[test]
-    fn test_fmt_ts() {
-        let ts = 3661.500; // 1h 1m 1s 500ms
-        let formatted = fmt_ts(ts);
-        assert_eq!(formatted, "01:01:01.500");
-    }
-
-    #[test]
-    fn test_fmt_ts_zero() {
-        assert_eq!(fmt_ts(0.0), "00:00:00.000");
     }
 }

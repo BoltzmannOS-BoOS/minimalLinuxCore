@@ -1,0 +1,50 @@
+#!/bin/sh
+
+REQ_DIR="/run/boos/requests"
+RESULT_DIR="/run/boos/results"
+LOG_FILE="/var/log/boos.log"
+
+log_msg() {
+    echo "[mock-ai] $1" >> "$LOG_FILE"
+}
+
+submit_and_wait() {
+    target="$1"
+
+    submit_out="$(/bin/boos-submit "$target")"
+    req_path="$(echo "$submit_out" | sed -n 's/^Submitted request: //p')"
+    req_id="$(basename "$req_path")"
+    result_file="$RESULT_DIR/$req_id.out"
+
+    log_msg "submitted $req_id ($target), waiting"
+
+    i=0
+    while [ ! -f "$result_file" ] && [ "$i" -lt 15 ]
+    do
+        sleep 1
+        i=$((i + 1))
+    done
+
+    if [ ! -f "$result_file" ]; then
+        echo "  observe: request $req_id timed out after ${i}s"
+        log_msg "$req_id timed out"
+        return 1
+    fi
+
+    status="$(grep '^status=' "$result_file" | cut -d '=' -f 2)"
+    exit_code="$(grep '^exit_code=' "$result_file" | cut -d '=' -f 2)"
+
+    echo "  observe: $req_id -> status=$status exit_code=$exit_code"
+    log_msg "$req_id observed: $status (rc=$exit_code)"
+    return 0
+}
+
+echo "(mock-ai) goal: inspect system, then inspect capabilities"
+
+echo "(mock-ai) decision 1: submit status"
+submit_and_wait status
+
+echo "(mock-ai) decision 2: submit caps"
+submit_and_wait caps
+
+echo "(mock-ai) plan complete."

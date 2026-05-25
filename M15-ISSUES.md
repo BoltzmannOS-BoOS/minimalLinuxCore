@@ -1,6 +1,7 @@
 # M15 Issues — 审计报告
 
 本次审计日期：2026-05-25
+第二轮修复：2026-05-25（Claude Opus 4.7）
 审计范围：Rust 重写（boos-exec, boos-process, boos-submit, boos-gateway）+
 残留 shell 脚本（boos-shell, boos-supervisor, boos-daemon, init）
 
@@ -58,21 +59,21 @@
 
 **修复：** 重试时先 `remove_file(&tmp_path)` 清理残留，加 1ms 退避。
 
-### B7. `generate_id` 确定性碰撞
+### B7. `generate_id` 确定性碰撞 — ✅ 已修复
 
-**文件：** `src/rust/src/submit.rs:12-21`
+**文件：** `src/rust/src/submit.rs:11-33`
 
 **问题：** 后缀 `(uptime * 10000) % 10000` 在快速连续调用中不变。O_EXCL 重试提供兜底，但 ID 质量弱。
 
-**建议：** 使用 `/dev/urandom` 的 4 字节替代确定性后缀。
+**修复：** 从 `/dev/urandom` 读 4 字节作 8 位十六进制后缀。`random_suffix()` 失败时回退到 `(uptime ^ pid)` 混合。新增 `test_generate_id_uniqueness_rapid` 测试 1000 次连续生成无碰撞。
 
-### B8. exit code 语义模糊
+### B8. exit code 语义模糊 — ✅ 已修复
 
-**文件：** `src/rust/src/process.rs:220-226`
+**文件：** `src/rust/src/config.rs`, `src/rust/src/exec.rs`, `src/rust/src/process.rs`
 
 **问题：** exit code 1 既代表 capability 拒绝也代表命令执行失败，导致未知命令被误标为 "denied"。
 
-**建议：** 区分退出码：0=成功，1=拒绝，2=错误，3=未知命令。
+**修复：** 在 `config.rs` 定义退出码契约：`EXIT_ALLOWED=0`, `EXIT_DENIED=1`, `EXIT_ERROR=2`, `EXIT_UNKNOWN=3`。`exec.rs` 三个分支分别走各自的退出码；`process.rs` verdict 映射新增 "unknown" 分类。外部程序通过 `exec=` 调用时退出码透传，process.rs 将 {0,1,3} 之外的值映射为 "error"。
 
 ---
 
@@ -122,46 +123,38 @@ Rust `config.rs` 定义了 `QUEUE_POLL_MS = 200`，但实际使用的 daemon 仍
 
 ## 三、架构层面问题
 
-### A1. Gateway 单线程瓶颈
+### A1. Gateway 单线程瓶颈 — ✅ 已修复
 
 **证据：** 200 并发连接中约 64 个失败（连接被拒绝或超时）。Gateway 使用单线程 `listener.incoming()` 循环，`handle_connection` 阻塞。
 
-**影响：** AI 并发工具调用时可能遇到超时。
+**修复：** `gateway.rs` 主循环改为 `thread::spawn` per connection；用 `Arc<AtomicUsize>` 计数器限制并发到 `MAX_GATEWAY_THREADS = 64`，超额连接收到 `BUSY\n` 后断开。每个线程结束时递减计数。
 
-**建议：** 至少用 `thread::spawn` 处理每个连接，或使用连接池。
+### A2. Gateway panic 风险 — ✅ 已修复（B4 同步解决）
 
-### A2. Gateway panic 风险
+**文件：** `src/rust/src/gateway.rs`
 
-**文件：** `src/rust/src/gateway.rs:23-26`
+B4 修复时已将 `try_clone().unwrap_or_else(|| panic!)` 改为 match + 日志 + return。本条与 B4 实为同一处代码。
 
-```rust
-let mut reader = BufReader::new(stream.try_clone().unwrap_or_else(|| {
-    panic!("cannot clone stream");
-}));
-```
+### A3. verbose 模式 1 秒阻塞延迟 — ✅ 已修复
 
-单个连接克隆失败会导致整个 gateway 崩溃。
+**文件：** `src/rust/src/process.rs`
 
-### A3. verbose 模式 1 秒阻塞延迟
+**修复：** 删除 marker 文件创建逻辑（marker 从未真正参与比较）和 1 秒 sleep。改为 `SystemTime::now() - 1s` 直接作为查找基准，ext2 整秒粒度的边界情况通过 1s 回看窗口覆盖。代价：至多 1 秒前的预存改动会作为 false positive 出现在 fs_trace，可接受。
 
-**文件：** `src/rust/src/process.rs:178`
+### A4. 未使用的代码 / 死代码 — ✅ 已修复
 
-```rust
-std::thread::sleep(std::time::Duration::from_secs(1));
-```
+- 删除 `fmt_ts` 函数及其 2 个测试
+- 删除 `DAEMON_DIR`, `DAEMON_RUN_DIR`, `QUEUE_POLL_MS` 常量（boos-supervisor 仍是 shell，无 Rust 引用方）
+- `MAX_LOG_LINE_LEN`：`log::write_log_bytes` 中现已实际截断超长行
+- `Command.params` / `ParamDef`：新增 `commands --json` 模式输出结构化 JSON（含 params），AI 客户端可消费此格式生成带参数的 tool definition。同时给 `submit.cmd`, `result.cmd`, `debug.cmd`, `prune.cmd` 补上 `params=` 字段
 
-每个请求在 verbose 模式下额外延迟 1 秒，大幅降低吞吐量。
+### A5. 持久化 /var 保留旧数据 — ✅ 已修复
 
-### A4. 未使用的代码/死代码
+- **日志轮转：** `log::write_log_bytes` 每 64 次写入检查一次文件大小，超过 `MAX_LOG_BYTES = 10MB` 时 `boos.log → boos.log.1 → boos.log.2`，保留 2 份历史
+- **手动结果清理：** 新增 `prune [days]` builtin，删除 `/var/boos/results/*.out` 中 mtime 早于 N 天的文件（默认 7 天）
+- **手动日志轮转：** 新增 `rotate-logs` builtin 强制立即轮转
 
-编译器警告暴露：
-- 4 个常量未使用（`DAEMON_DIR`, `DAEMON_RUN_DIR`, `MAX_LOG_LINE_LEN`, `QUEUE_POLL_MS`）
-- `fmt_ts` 函数未使用
-- `Command.params` 和 `ParamDef` 字段已定义但从未被读取——说明 `.cmd` 文件中的 `params` 解析已实现但未在实际工具生成中使用
-
-### A5. 持久化 /var 保留旧数据
-
-跨启动保留的持久化 /var 会累积旧的日志、result 文件，导致 `results` 和 `log` 命令输出膨胀。没有日志轮转或清理机制。
+保留"observe, don't obstruct"原则：prune 是手动触发，不自动；轮转后旧日志保留为 .1/.2 而非删除。
 
 ---
 
@@ -186,11 +179,16 @@ std::thread::sleep(std::time::Duration::from_secs(1));
 
 ## 五、测试结果
 
-### Rust 单元测试（新增）
-**22 个测试全部通过** — 覆盖 KV 解析、JSON 转义、ID 生成、参数解析、时长计算
+### Rust 单元测试
+**第一轮：** 22 个测试通过（DeepSeek 实现）
+**第二轮（本次）：** 20 个测试通过
+- 删除 `fmt_ts` 的 2 个测试（函数被删除）
+- 替换 2 个 "documented-collision" 测试为真正的唯一性测试（B7 后无碰撞）
+- 新增 `test_random_suffix_varies`
 
 ### verify.sh 集成测试
-**26/27 通过** — 1 个超时相关失败
+**第一轮：** 26/27 通过（在 DeepSeek 的测试环境）
+**第二轮：** 在当前开发机环境下无法执行 — `build/vmlinuz` 是 Ubuntu generic 内核，没有把 virtio-net 编译进 vmlinuz（要从模块加载），导致 QEMU 用户态网络的 host→guest 端口转发拿不到响应。这是宿主机内核选择问题，**不是 Rust 代码问题**。需要由用户在原先 verify.sh 通过的内核环境下重跑。
 
 ### 静态分析（自定义 Python 工具）
 生产脚本发现 **118 个问题**（28 HIGH / 79 MED / 11 LOW），主要集中在残留 shell 脚本中
@@ -199,7 +197,7 @@ std::thread::sleep(std::time::Duration::from_secs(1));
 
 ## 六、优先修复状态
 
-**已在本次审计中修复 (6 个):**
+**第一轮 DeepSeek 已修复 (6 个):**
 - ✅ B1 日志写入交叠
 - ✅ B2 verbose fs 追踪（epoch vs uptime 错配）
 - ✅ B3 管道死锁（stdout/stderr 顺序读）
@@ -207,9 +205,16 @@ std::thread::sleep(std::time::Duration::from_secs(1));
 - ✅ B5 Gateway 读超时（无声客户端 DoS）
 - ✅ B6 重试循环（tmp_path 残留导致重试无效）
 
-**仍待修复 (2 个):**
-- B7 ID 生成加真正的随机数
-- B8 exit code 语义区分（denied vs error）
+**第二轮 Claude 修复 (7 项):**
+- ✅ B7 `/dev/urandom` 随机后缀
+- ✅ B8 退出码语义契约（allowed/denied/error/unknown）
+- ✅ A1 Gateway 多线程 + 并发上限
+- ✅ A2 与 B4 同一处，已解决
+- ✅ A3 删除 verbose 模式的 1 秒 sleep
+- ✅ A4 删除死代码 + `commands --json` 接出 params + MAX_LOG_LINE_LEN 实际生效
+- ✅ A5 日志轮转 + `prune` / `rotate-logs` builtin
 
 **仍然在 shell 中的 (6 个):**
 - S1-S6 boos-shell + boos-supervisor + boos-daemon
+
+下一步候选：将 boos-supervisor 也 Rust 化（替换 shell 中的 awk /proc/uptime 调用、PID TOCTOU），或为残余 shell 加 `set -fu` + 引号化全部展开。
