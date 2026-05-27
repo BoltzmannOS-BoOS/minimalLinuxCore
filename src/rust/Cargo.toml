@@ -12,3 +12,7 @@ lto = true            # link-time optimization
 strip = true          # strip symbols
 panic = "abort"       # no unwinding machinery
 codegen-units = 1     # better optimization
+
+[[bin]]
+name = "tcp-client"
+path = "/work/tools/tcp-client.rs"

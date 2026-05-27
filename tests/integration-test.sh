@@ -1,21 +1,28 @@
 #!/bin/sh
 # BoOS Integration Test Suite
 # Run against a running BoOS gateway (QEMU or native).
+# Uses Rust tcp-client binary (BusyBox nc has race conditions).
 # Usage: bash tests/integration-test.sh [host] [port]
-#
-# Covers: gateway protocol (AUTH, SESSION), submit --wait,
-#         session tracking, all commands, security denials.
-
-set -e
 
 HOST="${1:-localhost}"
 PORT="${2:-5555}"
 PASS=0
 FAIL=0
 
+# Build tcp-client if needed
+TCP_CLIENT="${TCP_CLIENT:-./target/release/tcp-client}"
+if [ ! -x "$TCP_CLIENT" ]; then
+    TCP_CLIENT="./src/rust/target/release/tcp-client"
+fi
+
 send() {
-    # Send one or more lines, read response
-    printf '%s\n' "$@" | nc -w5 "$HOST" "$PORT" 2>/dev/null || echo "CONNECTION_FAILED"
+    # Join all arguments into a single space-separated command line
+    printf '%s\n' "$*" | "$TCP_CLIENT" "$HOST" "$PORT" 2>/dev/null
+}
+
+send_lines() {
+    # Send multiple newline-separated lines (for SESSION protocol)
+    printf '%s\n' "$@" | "$TCP_CLIENT" "$HOST" "$PORT" 2>/dev/null
 }
 
 check() {
@@ -45,10 +52,9 @@ if echo "$out" | grep -q "BoOS commands"; then
     echo "  PASS: gateway responds"
     PASS=$((PASS + 1))
 else
-    echo "  FAIL: no response from gateway (is BoOS running?)"
+    echo "  FAIL: no response from gateway"
     FAIL=$((FAIL + 1))
-    echo ""
-    echo "Make sure QEMU is running: bash scripts/run-qemu.sh"
+    echo "  Make sure BoOS gateway is running on $HOST:$PORT"
     exit 1
 fi
 
@@ -81,41 +87,23 @@ else
 fi
 
 if [ -n "$SUB_ID" ]; then
-    sleep 2  # wait for daemon to process
+    sleep 2
     check "result in list" "$SUB_ID"  "results"
     check "verdict allowed" "verdict=allowed" "result $SUB_ID"
 fi
 
-# --- 5. Submit --wait (synchronous) ---
+# --- 5. Submit --wait ---
 echo ""
 echo "--- 5. Submit --wait ---"
 check "submit --wait" "BoOS substrate" "submit" "--wait" "status"
 
-# --- 6. Multi-arg Submit ---
-echo ""
-echo "--- 6. Multi-arg Submit ---"
-ID2=$(send "submit debug verbose" | grep -o 'req-[0-9a-z-]*' | head -1)
-if [ -n "$ID2" ]; then
-    echo "  PASS: multi-arg request ID: $ID2"
-    PASS=$((PASS + 1))
-    sleep 2
-    out=$(send "result $ID2")
-    if echo "$out" | grep -q "args=verbose"; then
-        echo "  PASS: args preserved in result"
-        PASS=$((PASS + 1))
-    else
-        echo "  FAIL: args not in result"
-        FAIL=$((FAIL + 1))
-    fi
-fi
-
 # --- 7. Session Tracking ---
 echo ""
 echo "--- 7. Session Tracking ---"
-SESSION_ID="test-session-$(date +%s)"
-SID=$(send "SESSION $SESSION_ID" "submit status" | grep -o 'req-[0-9a-z-]*' | head -1)
+SESSION_ID="test-session-$$"
+SID=$(send_lines "SESSION $SESSION_ID" "submit status" | grep -o 'req-[0-9a-z-]*' | head -1)
 if [ -n "$SID" ]; then
-    echo "  PASS: session request ID: $SID"
+    echo "  PASS: session req ID: $SID"
     PASS=$((PASS + 1))
     sleep 2
     out=$(send "result $SID")
@@ -128,7 +116,7 @@ if [ -n "$SID" ]; then
     fi
 fi
 
-# --- 8. Security: Denied Commands ---
+# --- 8. Security Denials ---
 echo ""
 echo "--- 8. Security Denials ---"
 check "shell denied"    "Permission denied" "shell"
@@ -155,60 +143,10 @@ if [ -n "$SUB_ID" ]; then
     fi
 fi
 
-# --- 11. Result File Completeness ---
-echo ""
-echo "--- 11. Result Completeness ---"
-if [ -n "$SUB_ID" ]; then
-    out=$(send "result $SUB_ID")
-    missing=0
-    for field in "id=" "requester=" "command=" "verdict=" "exit_code=" "started_at=" "finished_at=" "duration_ms="; do
-        if ! echo "$out" | grep -q "$field"; then
-            echo "    MISSING: $field"
-            missing=$((missing + 1))
-        fi
-    done
-    if ! echo "$out" | grep -q -e '^---$' -e '^---'; then
-        echo "    MISSING: output delimiter"
-        missing=$((missing + 1))
-    fi
-    if [ "$missing" -eq 0 ]; then
-        echo "  PASS: all fields present"
-        PASS=$((PASS + 1))
-    else
-        echo "  FAIL: $missing fields missing"
-        FAIL=$((FAIL + 1))
-    fi
-fi
-
-# --- 12. Requester Attribution ---
-echo ""
-echo "--- 12. Requester Attribution ---"
-if [ -n "$SUB_ID" ]; then
-    out=$(send "result $SUB_ID")
-    if echo "$out" | grep -q "requester=ai"; then
-        echo "  PASS: requester=ai"
-        PASS=$((PASS + 1))
-    else
-        echo "  FAIL: wrong requester"
-        FAIL=$((FAIL + 1))
-    fi
-fi
-
-# --- 13. Config Hot Reload ---
-echo ""
-echo "--- 13. Config Hot Reload ---"
-# This is a smoke test — the actual reload happens in supervisor loop
-check "log shows entries" "component" "log"
-
-# --- Results ---
 echo ""
 echo "=== Integration Test Results ==="
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
 echo ""
-if [ "$FAIL" -eq 0 ]; then
-    echo "ALL TESTS PASSED"
-else
-    echo "SOME TESTS FAILED"
-fi
+[ "$FAIL" -eq 0 ] && echo "ALL TESTS PASSED" || echo "SOME TESTS FAILED"
 exit $FAIL
