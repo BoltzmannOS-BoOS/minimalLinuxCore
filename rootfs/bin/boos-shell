@@ -1,4 +1,5 @@
 #!/bin/sh
+set -f
 
 LOG_FILE="/var/log/boos.log"
 
@@ -15,7 +16,7 @@ echo "Type 'help' to see commands."
 while true
 do
     printf "boos> "
-    read line
+    read -r line
 
     [ -z "$line" ] && continue
 
@@ -31,7 +32,7 @@ do
             if [ -z "$1" ]; then
                 echo "Usage: run <command>"
             else
-                /bin/boos-exec $*
+                /bin/boos-exec "$@"
             fi
             ;;
 
@@ -40,7 +41,7 @@ do
             if [ -z "$1" ]; then
                 echo "Usage: submit <command> [args...]"
             else
-                /bin/boos-exec submit $*
+                /bin/boos-exec submit "$@"
             fi
             ;;
 

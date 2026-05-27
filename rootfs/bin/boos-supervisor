@@ -1,4 +1,5 @@
 #!/bin/sh
+set -f
 #
 # boos-supervisor — daemon supervisor for BoOS.
 #
@@ -75,7 +76,13 @@ is_running() {
     if [ -f "$pid_file" ]; then
         pid="$(cat "$pid_file")"
         if kill -0 "$pid" 2>/dev/null; then
-            return 0
+            # Verify the PID still belongs to this daemon (mitigate TOCTOU / PID reuse)
+            cmdline="/proc/${pid}/cmdline"
+            if [ -f "$cmdline" ] && grep -qF "$name" "$cmdline" 2>/dev/null; then
+                return 0
+            fi
+            # Process exists but cmdline doesn't match — likely PID reuse
+            return 1
         fi
     fi
     return 1

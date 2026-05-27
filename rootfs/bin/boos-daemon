@@ -1,9 +1,14 @@
 #!/bin/sh
+set -f
 
 LOG_FILE="/var/log/boos.log"
 
 SHARED_REQ_DIR="/mnt/shared/requests"
 SHARED_RESULT_DIR="/mnt/shared/results"
+
+# Configurable poll interval (seconds), default 1
+POLL_INTERVAL=1
+[ -f /etc/boos/daemon.conf ] && . /etc/boos/daemon.conf
 
 ts="$(awk '{printf "%.3f", $1}' /proc/uptime)"
 echo "ts=$ts component=boos-daemon event=started" >> "$LOG_FILE"
@@ -12,11 +17,11 @@ export BOOS_REQUESTER=system
 
 while true
 do
-    /bin/boos-process >/dev/null 2>&1
+    /bin/boos-process 2>>"$LOG_FILE" >/dev/null
 
     if [ -d "$SHARED_REQ_DIR" ]; then
-        /bin/boos-process "$SHARED_REQ_DIR" "$SHARED_RESULT_DIR" >/dev/null 2>&1
+        /bin/boos-process "$SHARED_REQ_DIR" "$SHARED_RESULT_DIR" 2>>"$LOG_FILE" >/dev/null
     fi
 
-    sleep 1
+    sleep "$POLL_INTERVAL"
 done
