@@ -100,6 +100,7 @@ pub fn main() {
 
     // Requester identity: set by caller, no -r override allowed
     let requester = env::var("BOOS_REQUESTER").unwrap_or_else(|_| "unknown".to_string());
+    let session_id = env::var("BOOS_SESSION").ok();
 
     // Ensure request directory exists
     let _ = fs::create_dir_all(config::REQ_DIR);
@@ -107,10 +108,13 @@ pub fn main() {
     let id = generate_id();
     let submitted_at = log::uptime_secs();
 
-    let content = format!(
+    let mut content = format!(
         "id={}\nrequester={}\ncommand={}\nargs={}\nsubmitted_at={:.3}\nstatus=pending\n",
         id, requester, cmd, cmd_args_str, submitted_at
     );
+    if let Some(ref sid) = session_id {
+        content.push_str(&format!("session_id={}\n", sid));
+    }
 
     // Atomic write: temp file + rename. Use O_EXCL for collision detection.
     let file_path = Path::new(config::REQ_DIR).join(&id);

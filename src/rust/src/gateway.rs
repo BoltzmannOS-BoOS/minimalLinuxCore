@@ -26,7 +26,6 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
 
     // Clone the stream for reading so we can write to the original.
-    // If clone fails (extremely rare: fd exhaustion), log and disconnect.
     let cloned = match stream.try_clone() {
         Ok(s) => s,
         Err(e) => {
@@ -44,43 +43,31 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     if reader.read_line(&mut line).is_err() {
         return;
     }
-    let mut line = line.trim().to_string();
+    let line = line.trim().to_string();
     if line.is_empty() {
         return;
     }
 
-    // Auth check
-    if let Some(tok) = token {
-        if let Some(rest) = line.strip_prefix("AUTH ") {
-            if rest.trim() != tok.as_str() {
-                let _ = writeln!(stream, "AUTH FAILED");
-                log::log("boos-gateway", "auth_failed", &[("peer", &peer)]);
-                return;
-            }
-            // Auth ok, read the actual command line
-            line.clear();
-            if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
-                return;
-            }
-            line = line.trim().to_string();
-        } else {
-            // First line wasn't AUTH, but auth is required
-            let _ = writeln!(stream, "AUTH REQUIRED");
-            log::log("boos-gateway", "auth_required", &[("peer", &peer)]);
-            return;
-        }
-    }
+    // Dispatch: AUTH, SESSION, or command
+    let (command_line, session_id) = parse_protocol(&mut reader, &mut stream, &line, token, &peer);
+    let command_line = match command_line {
+        Some(c) => c,
+        None => return, // connection rejected or errored
+    };
 
     log::log("boos-gateway", "request", &[
         ("peer", &peer),
-        ("command", &log::json_escape(&line)),
+        ("command", &log::json_escape(&command_line)),
+        ("session", session_id.as_deref().unwrap_or("none")),
     ]);
 
-    // Execute via boos-exec. Set BOOS_REQUESTER=ai
+    // Execute via boos-exec. Set BOOS_REQUESTER=ai and optionally BOOS_SESSION
     let mut cmd = process::Command::new("/bin/boos-exec");
     cmd.env("BOOS_REQUESTER", "ai");
-    // Split the line into command + args
-    let parts: Vec<&str> = line.split_whitespace().collect();
+    if let Some(ref sid) = session_id {
+        cmd.env("BOOS_SESSION", sid);
+    }
+    let parts: Vec<&str> = command_line.split_whitespace().collect();
     for arg in &parts {
         cmd.arg(arg);
     }
@@ -94,6 +81,61 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
             let _ = writeln!(stream, "Gateway error: {}", e);
         }
     }
+}
+
+/// Parse the gateway protocol: AUTH, SESSION, then command.
+/// Returns (command_line, session_id) or None if connection should be dropped.
+fn parse_protocol(
+    reader: &mut BufReader<TcpStream>,
+    stream: &mut TcpStream,
+    first_line: &str,
+    token: &Option<String>,
+    peer: &str,
+) -> (Option<String>, Option<String>) {
+    let mut line = first_line.to_string();
+    let mut session_id: Option<String> = None;
+    let mut auth_done = token.is_none(); // skip auth if no token configured
+
+    // Phase 1: handle AUTH and SESSION preamble lines
+    loop {
+        if !auth_done {
+            if let Some(rest) = line.strip_prefix("AUTH ") {
+                if rest.trim() != token.as_ref().unwrap().as_str() {
+                    let _ = writeln!(stream, "AUTH FAILED");
+                    log::log("boos-gateway", "auth_failed", &[("peer", peer)]);
+                    return (None, None);
+                }
+                auth_done = true;
+                // Read next line
+                line.clear();
+                if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+                    return (None, None);
+                }
+                line = line.trim().to_string();
+                continue;
+            } else {
+                let _ = writeln!(stream, "AUTH REQUIRED");
+                log::log("boos-gateway", "auth_required", &[("peer", peer)]);
+                return (None, None);
+            }
+        }
+
+        if let Some(rest) = line.strip_prefix("SESSION ") {
+            session_id = Some(rest.trim().to_string());
+            // Read next line
+            line.clear();
+            if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+                return (None, None);
+            }
+            line = line.trim().to_string();
+            continue;
+        }
+
+        // Not AUTH or SESSION — must be the command
+        break;
+    }
+
+    (Some(line), session_id)
 }
 
 pub fn main() {

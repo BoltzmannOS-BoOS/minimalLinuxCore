@@ -177,6 +177,7 @@ pub fn main() {
         };
         let args = kv.get("args").map(|s| s.as_str()).unwrap_or("");
         let requester = kv.get("requester").map(|s| s.as_str()).unwrap_or("unknown");
+        let session_id = kv.get("session_id").map(|s| s.as_str());
 
         let started_at = log::uptime_secs();
         let prev_cmd = fs::read_to_string(config::LAST_CMD_FILE).unwrap_or_default();
@@ -265,6 +266,10 @@ pub fn main() {
             "id={}\nrequester={}\ncommand={}\nargs={}\nverdict={}\nexit_code={}\nstarted_at={:.3}\nfinished_at={:.3}\nduration_ms={}\n",
             id, requester, cmd, args, verdict, exit_code, started_at, finished_at, duration
         );
+
+        if let Some(sid) = session_id {
+            result_content.push_str(&format!("session_id={}\n", sid));
+        }
 
         if !prev_cmd.is_empty() {
             result_content.push_str(&format!("prev_command={}\n", prev_cmd));
