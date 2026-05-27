@@ -252,10 +252,18 @@ fn is_daemon_running(name: &str) -> bool {
                 continue;
             }
             let cmdline_path = entry.path().join("cmdline");
-            if let Ok(cmdline) = fs::read_to_string(&cmdline_path) {
-                // cmdline is null-separated; check if name appears
-                if cmdline.contains(name) {
-                    return true;
+            if let Ok(data) = fs::read(&cmdline_path) {
+                // cmdline is null-separated; split and check each arg
+                // argv[0] is the binary path — check if name appears in it
+                for part in data.split(|&b| b == 0) {
+                    let s = String::from_utf8_lossy(part);
+                    if s.is_empty() {
+                        continue;
+                    }
+                    if s.contains(name) {
+                        return true;
+                    }
+                    break; // Only check argv[0] (first non-empty segment)
                 }
             }
         }

@@ -4,7 +4,6 @@ use std::process::Command;
 use crate::log;
 
 pub fn main() {
-    let stdin = io::stdin();
     let mut stdout = io::stdout();
 
     // Set requester for logging
@@ -13,19 +12,27 @@ pub fn main() {
     writeln!(stdout, "BoOS shell started.").ok();
     writeln!(stdout, "Type 'help' to see commands.").ok();
 
-    let reader = stdin.lock();
-    for line_result in reader.lines() {
-        let line = match line_result {
-            Ok(l) => l,
-            Err(_) => break,
+    // Acquire and release stdin lock per-iteration so subprocesses can read stdin
+    loop {
+        write!(stdout, "boos> ").ok();
+        stdout.flush().ok();
+
+        let line = {
+            let stdin = io::stdin();
+            let mut line = String::new();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => line,
+                Err(_) => break,
+            }
         };
 
-        let line = line.trim();
+        let line = line.trim().to_string();
         if line.is_empty() {
             continue;
         }
 
-        log::log("boos-shell", "input", &[("input", line)]);
+        log::log("boos-shell", "input", &[("input", &line)]);
 
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.is_empty() {
@@ -37,7 +44,7 @@ pub fn main() {
 
         match cmd {
             "exit" | "quit" => {
-                let _ = Command::new("/bin/boos-exec").arg("poweroff").status();
+                writeln!(stdout, "Goodbye.").ok();
                 break;
             }
             "run" => {
@@ -56,12 +63,13 @@ pub fn main() {
                     let _ = Command::new("/bin/boos-exec").args(&exec_args).status();
                 }
             }
-            // Known commands — pass through to boos-exec
+            // Known commands — pass ALL args through to boos-exec
             "help" | "commands" | "status" | "log" | "caps" | "shell"
             | "poweroff" | "process" | "results" | "result" | "debug"
             | "daemons" => {
-                let arg = args.first().copied().unwrap_or("");
-                let _ = Command::new("/bin/boos-exec").arg(cmd).arg(arg).status();
+                let mut exec_args: Vec<&str> = vec![cmd];
+                exec_args.extend_from_slice(args);
+                let _ = Command::new("/bin/boos-exec").args(&exec_args).status();
             }
             _ => {
                 writeln!(stdout, "Unknown command: {}", cmd).ok();
