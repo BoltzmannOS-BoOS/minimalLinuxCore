@@ -8,6 +8,7 @@ mod submit;
 mod exec;
 mod process;
 mod gateway;
+mod supervisor;
 
 fn main() {
     let argv0 = env::args().next().unwrap_or_default();
@@ -17,12 +18,13 @@ fn main() {
         .unwrap_or("boos");
 
     match name {
-        "boos-submit"  => submit::main(),
-        "boos-exec"    => exec::main(),
-        "boos-process" => process::main(),
-        "boos-gateway" => gateway::main(),
+        "boos-submit"    => submit::main(),
+        "boos-exec"      => exec::main(),
+        "boos-process"   => process::main(),
+        "boos-gateway"   => gateway::main(),
+        "boos-supervisor" => supervisor::main(),
         _ => {
-            eprintln!("Usage: boos-{{submit,exec,process,gateway}} ...");
+            eprintln!("Usage: boos-{{submit,exec,process,gateway,supervisor}} ...");
             std::process::exit(1);
         }
     }

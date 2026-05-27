@@ -24,7 +24,7 @@ cp "$BIN" "$ROOTFS/bin/boos"
 
 # Create symlinks for multi-call dispatch
 cd "$ROOTFS/bin"
-for name in boos-exec boos-process boos-submit boos-gateway; do
+for name in boos-exec boos-process boos-submit boos-gateway boos-supervisor; do
     ln -sf boos "$name"
 done
 

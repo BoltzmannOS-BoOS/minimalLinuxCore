@@ -47,13 +47,6 @@ echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
 echo "================================"
 
-# Start supervisor (manages all daemons)
-/bin/boos-supervisor &
-echo "[init] supervisor started"
-
-# Announce gateway availability
-if [ -n "$IP" ]; then
-    echo "[init] gateway on $IP:5555"
-fi
-
-exec /bin/boos-shell
+# Start supervisor (manages gateway daemon + request processing)
+echo "[init] starting boos-supervisor..."
+exec /bin/boos-supervisor

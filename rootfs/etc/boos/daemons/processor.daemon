@@ -1,5 +1,5 @@
 name=processor
 exec=/bin/boos-daemon
 restart=always
-enabled=1
-description=process pending requests from the queue
+enabled=0
+description=process pending requests from the queue (now handled in-process by boos-supervisor)
