@@ -1,16 +1,26 @@
 use std::collections::HashMap;
 use std::fs;
 use std::process::{Child, Command};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::log;
 use crate::registry;
 
 const DAEMON_DIR: &str = "/etc/boos/daemons";
 const DAEMON_RUN_DIR: &str = "/var/boos/daemons";
+const DAEMON_CONF: &str = "/etc/boos/daemon.conf";
+const CAP_CONF: &str = "/etc/boos/capabilities.conf";
 const MAX_RESTARTS: u32 = 5;
-const DEFAULT_POLL_INTERVAL: u64 = 1; // seconds
-const HEALTH_CHECK_INTERVAL: u64 = 2; // seconds
+const DEFAULT_POLL_INTERVAL: u64 = 1;
+const HEALTH_CHECK_INTERVAL: u64 = 2;
+
+/// Get file modification time as seconds since epoch, or None.
+fn mtime_secs(path: &str) -> Option<u64> {
+    fs::metadata(path).ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+}
 
 struct DaemonConfig {
     name: String,
@@ -285,7 +295,6 @@ pub fn main() {
 
     let daemons = load_daemon_configs();
     let mut children: HashMap<String, ChildInfo> = HashMap::new();
-    let poll_interval = load_poll_interval();
 
     // Spawn enabled daemons
     for d in &daemons {
@@ -297,9 +306,36 @@ pub fn main() {
     }
 
     let mut last_health_check = Instant::now();
+    let mut last_daemon_conf_mtime = mtime_secs(DAEMON_CONF);
+    let mut last_cap_conf_mtime = mtime_secs(CAP_CONF);
+    let mut poll_interval = load_poll_interval();
 
     // Main supervision + polling loop
     loop {
+        // Hot reload: check if daemon.conf changed
+        let current_mtime = mtime_secs(DAEMON_CONF);
+        if current_mtime != last_daemon_conf_mtime {
+            last_daemon_conf_mtime = current_mtime;
+            let new_interval = load_poll_interval();
+            if new_interval != poll_interval {
+                log::log("boos-supervisor", "config_reload", &[
+                    ("file", DAEMON_CONF),
+                    ("old_poll", &poll_interval.to_string()),
+                    ("new_poll", &new_interval.to_string()),
+                ]);
+                poll_interval = new_interval;
+            }
+        }
+
+        // Hot reload: capabilities.conf
+        let cap_mtime = mtime_secs(CAP_CONF);
+        if cap_mtime != last_cap_conf_mtime {
+            last_cap_conf_mtime = cap_mtime;
+            log::log("boos-supervisor", "config_reload", &[
+                ("file", CAP_CONF),
+            ]);
+        }
+
         // Health check every HEALTH_CHECK_INTERVAL seconds
         if last_health_check.elapsed() >= Duration::from_secs(HEALTH_CHECK_INTERVAL) {
             for d in &daemons {
