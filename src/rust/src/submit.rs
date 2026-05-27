@@ -3,10 +3,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config;
 use crate::log;
+
+// ... (random_suffix, generate_id unchanged)
 
 /// Read 4 random bytes from /dev/urandom. Falls back to a PID/uptime mix
 /// if /dev/urandom is unreadable (extremely rare on Linux; would imply a
@@ -35,17 +37,65 @@ fn generate_id() -> String {
     format!("req-{}-{:08x}", now, random_suffix())
 }
 
+fn wait_for_result(id: &str, timeout_secs: u64) {
+    let result_path = Path::new(config::RESULT_DIR).join(format!("{}.out", id));
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+
+    loop {
+        if let Ok(content) = fs::read_to_string(&result_path) {
+            // Parse exit code from result metadata
+            let exit_code = content
+                .lines()
+                .find(|l| l.starts_with("exit_code="))
+                .and_then(|l| l["exit_code=".len()..].parse::<i32>().ok())
+                .unwrap_or(1);
+
+            // Print everything after the "---" delimiter
+            if let Some(pos) = content.find("\n---\n") {
+                print!("{}", &content[pos + 5..]);
+            }
+            process::exit(exit_code);
+        }
+
+        if Instant::now() > deadline {
+            eprintln!("Timeout waiting for result {}", id);
+            process::exit(1);
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 pub fn main() {
     let args: Vec<String> = env::args().collect();
 
-    // args[0] is program name, args[1..] = cmd + its args
-    if args.len() < 2 {
-        eprintln!("Usage: boos-submit <command> [args...]");
+    // Parse --wait flag
+    let mut wait_mode = false;
+    let mut timeout = 30u64;
+    let mut cmd_parts: Vec<&str> = Vec::new();
+
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--wait" || args[i] == "-w" {
+            wait_mode = true;
+        } else if args[i] == "--timeout" || args[i] == "-t" {
+            i += 1;
+            if i < args.len() {
+                timeout = args[i].parse().unwrap_or(30);
+            }
+        } else {
+            cmd_parts.push(&args[i]);
+        }
+        i += 1;
+    }
+
+    if cmd_parts.is_empty() {
+        eprintln!("Usage: boos-submit [--wait] [-t SECS] <command> [args...]");
         process::exit(1);
     }
 
-    let cmd = &args[1];
-    let cmd_args: Vec<&str> = args[2..].iter().map(|s| s.as_str()).collect();
+    let cmd = cmd_parts[0];
+    let cmd_args: Vec<&str> = cmd_parts[1..].to_vec();
     let cmd_args_str = cmd_args.join(" ");
 
     // Requester identity: set by caller, no -r override allowed
@@ -114,6 +164,10 @@ pub fn main() {
     );
 
     println!("Submitted: {}", id);
+
+    if wait_mode {
+        wait_for_result(&id, timeout);
+    }
 }
 
 #[cfg(test)]

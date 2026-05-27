@@ -1,4 +1,6 @@
 #!/bin/sh
+# DEPRECATED: boos-daemon functionality absorbed into Rust boos-supervisor.
+# This file is kept for reference only and is no longer started at boot.
 set -f
 
 LOG_FILE="/var/log/boos.log"
