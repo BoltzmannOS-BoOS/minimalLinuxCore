@@ -3,6 +3,9 @@ name = "boos"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
 # Static link musl for minimal initramfs footprint.
 # Build: cargo build --release --target x86_64-unknown-linux-musl
 
@@ -15,4 +18,4 @@ codegen-units = 1     # better optimization
 
 [[bin]]
 name = "tcp-client"
-path = "/work/tools/tcp-client.rs"
+path = "../../tools/tcp-client.rs"
