@@ -134,11 +134,12 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
             let name = e.file_name().to_string_lossy().to_string();
             if name.ends_with(".rs") {
                 let size = e.metadata().map(|m| m.len()).unwrap_or(0);
-                ctx.push_str(&format!("  {} ({} bytes)\n", name, size));
+                let full_path = format!("{}/{}", src_dir, name);
+                ctx.push_str(&format!("  {} ({} bytes)\n", full_path, size));
             }
         }
     }
-    ctx.push_str("  Cargo.toml (project config)\n");
+    ctx.push_str("  src/rust/Cargo.toml (project config)\n");
 
     // Show recent actions (last 5)
     if !recent_actions.is_empty() {
@@ -197,7 +198,12 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("WRITE error: {}", e),
         }
     } else if upper == "BUILD" {
-        match Command::new("cargo").arg("build").arg("--release").output() {
+        // Build must run from the Rust project directory (where Cargo.toml lives).
+        let saved_dir = std::env::current_dir().ok();
+        if !std::path::Path::new("Cargo.toml").exists() {
+            let _ = std::env::set_current_dir("src/rust");
+        }
+        let result = match Command::new("cargo").arg("build").arg("--release").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 let stderr = String::from_utf8_lossy(&o.stderr);
@@ -218,9 +224,19 @@ fn execute_develop_action(action: &str) -> String {
                 }
             }
             Err(e) => format!("BUILD error: {}", e),
+        };
+        // Restore working directory
+        if let Some(dir) = saved_dir {
+            let _ = std::env::set_current_dir(dir);
         }
+        result
     } else if upper == "TEST" {
-        match Command::new("cargo").arg("test").output() {
+        // Tests must run from the Rust project directory (where Cargo.toml lives).
+        let saved_dir = std::env::current_dir().ok();
+        if !std::path::Path::new("Cargo.toml").exists() {
+            let _ = std::env::set_current_dir("src/rust");
+        }
+        let result = match Command::new("cargo").arg("test").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 let stderr = String::from_utf8_lossy(&o.stderr);
@@ -247,7 +263,12 @@ fn execute_develop_action(action: &str) -> String {
                 }
             }
             Err(e) => format!("TEST error: {}", e),
+        };
+        // Restore working directory
+        if let Some(dir) = saved_dir {
+            let _ = std::env::set_current_dir(dir);
         }
+        result
     } else {
         format!("Unknown action: {}. Use READ/WRITE/BUILD/TEST/DONE.", action)
     }
@@ -334,6 +355,20 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         recent_actions.push(entry.clone());
         memory::recent_add(memory::RecentEntry::new("develop", &entry, &session_id)).ok();
 
+        // Repetition guard: if last 3 actions are identical READs, auto-finish
+        if recent_actions.len() >= 3 {
+            let n = recent_actions.len();
+            let a1 = recent_actions[n - 1].clone();
+            let a2 = recent_actions[n - 2].clone();
+            let a3 = recent_actions[n - 3].clone();
+            if a1 == a2 && a2 == a3 && a1.contains("READ ") {
+                println!("── Agent: (repetition detected, auto-finishing)");
+                let fact = "DONE: (auto: repeated reads)".to_string();
+                memory::recent_add(memory::RecentEntry::new("develop", &fact, &session_id)).ok();
+                break;
+            }
+        }
+
         std::thread::sleep(Duration::from_millis(LOOP_DELAY_MS));
     }
 
@@ -418,26 +453,15 @@ mod tests {
 
     #[test]
     fn test_execute_build() {
-        // Run from the rust project directory
-        let original_dir = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("src/rust");
+        // execute_develop_action now handles CWD itself
         let result = execute_develop_action("BUILD");
-        if let Some(dir) = original_dir {
-            let _ = std::env::set_current_dir(dir);
-        }
-        // Build should succeed (codebase compiles)
         assert!(result.contains("BUILD: success"), "Build should succeed, got: {}", result);
     }
 
     #[test]
     fn test_execute_test() {
-        let original_dir = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("src/rust");
+        // execute_develop_action now handles CWD itself
         let result = execute_develop_action("TEST");
-        if let Some(dir) = original_dir {
-            let _ = std::env::set_current_dir(dir);
-        }
-        // Tests should pass
         assert!(result.contains("TEST:"), "Should return test result, got: {}", result);
     }
 
