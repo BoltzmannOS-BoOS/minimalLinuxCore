@@ -25,6 +25,22 @@ fn show_help() {
     println!("  rotate-logs         force log rotation");
     println!("  shell               enter raw BusyBox shell");
     println!("  poweroff            power off system");
+    println!("  ── File Operations ──");
+    println!("  read-file <path>                read contents of a file");
+    println!("  write-file <path> <content>     create or overwrite a file");
+    println!("  list-dir [path]                 list directory contents");
+    println!("  stat <path>                     show file metadata");
+    println!("  exec <binary> [args...]          execute a system binary");
+    println!("  ── Agent Memory ──");
+    println!("  session-start [id]  start a new agent session");
+    println!("  session-status      show current session state");
+    println!("  session-end         end session and archive");
+    println!("  remember <k> <v>    store in archive memory");
+    println!("  recall [query]      search memory");
+    println!("  observe <content>   record observation");
+    println!("  forget <key>        delete from archive");
+    println!("  context-set <k> <v> set context variable");
+    println!("  context-get <k>     get context variable");
 }
 
 fn list_commands(args: &str) {
@@ -381,7 +397,10 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
                 .status()
             {
                 Ok(s) => s.code().unwrap_or(EXIT_ERROR),
-                Err(_) => EXIT_ERROR,
+                Err(_) => {
+                    println!("supervisor: not running (no daemon status available)");
+                    EXIT_ALLOWED
+                }
             }
         }
         "__builtin_poweroff" => {
@@ -391,6 +410,151 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         }
         "__builtin_prune" => prune_results(args),
         "__builtin_rotate_logs" => rotate_logs_cmd(),
+        // ── New: file operations and execution ──
+        "__builtin_read_file" => {
+            let path = args.trim();
+            if path.is_empty() {
+                eprintln!("Usage: read-file <path>");
+                EXIT_ERROR
+            } else {
+                match std::fs::read_to_string(path) {
+                    Ok(content) => {
+                        println!("{}", content);
+                        EXIT_ALLOWED
+                    }
+                    Err(e) => {
+                        eprintln!("read-file: {}", e);
+                        EXIT_ERROR
+                    }
+                }
+            }
+        }
+        "__builtin_exec" => {
+            let args_trimmed = args.trim();
+            if args_trimmed.is_empty() {
+                eprintln!("Usage: exec <binary> [args...]");
+                return EXIT_ERROR;
+            }
+            let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
+            let cmd = parts[0];
+            let cmd_args = &parts[1..];
+            match process::Command::new(cmd).args(cmd_args).status() {
+                Ok(s) => s.code().unwrap_or(EXIT_ERROR),
+                Err(e) => {
+                    eprintln!("exec: {}", e);
+                    EXIT_ERROR
+                }
+            }
+        }
+        "__builtin_write_file" => {
+            let args_trimmed = args.trim();
+            if args_trimmed.is_empty() {
+                eprintln!("Usage: write-file <path> <content>");
+                return EXIT_ERROR;
+            }
+            let space_pos = match args_trimmed.find(|c: char| c.is_whitespace()) {
+                Some(p) => p,
+                None => {
+                    eprintln!("Usage: write-file <path> <content>");
+                    return EXIT_ERROR;
+                }
+            };
+            let path = args_trimmed[..space_pos].trim();
+            let content = args_trimmed[space_pos..].trim();
+            if path.is_empty() || content.is_empty() {
+                eprintln!("Usage: write-file <path> <content>");
+                return EXIT_ERROR;
+            }
+            // Create parent directories if needed
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                if !parent.as_os_str().is_empty() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+            }
+            match std::fs::write(path, content) {
+                Ok(()) => {
+                    println!("Written: {} ({} bytes)", path, content.len());
+                    EXIT_ALLOWED
+                }
+                Err(e) => {
+                    eprintln!("write-file: {}", e);
+                    EXIT_ERROR
+                }
+            }
+        }
+        "__builtin_list_dir" => {
+            let path = args.trim();
+            let dir_path = if path.is_empty() { "." } else { path };
+            match std::fs::read_dir(dir_path) {
+                Ok(entries) => {
+                    let mut list: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .collect();
+                    list.sort_by_key(|e| e.file_name());
+                    println!("Directory: {}", dir_path);
+                    for entry in &list {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let file_type = match entry.file_type() {
+                            Ok(ft) if ft.is_dir() => "d",
+                            Ok(ft) if ft.is_symlink() => "l",
+                            Ok(_) => "-",
+                            Err(_) => "?",
+                        };
+                        let size = entry.metadata()
+                            .map(|m| m.len())
+                            .unwrap_or(0);
+                        println!("  {} {:>8} {}", file_type, size, name);
+                    }
+                    println!("  ({} entries)", list.len());
+                    EXIT_ALLOWED
+                }
+                Err(e) => {
+                    eprintln!("list-dir: {}", e);
+                    EXIT_ERROR
+                }
+            }
+        }
+        "__builtin_stat" => {
+            let path = args.trim();
+            if path.is_empty() {
+                eprintln!("Usage: stat <path>");
+                return EXIT_ERROR;
+            }
+            match std::fs::metadata(path) {
+                Ok(m) => {
+                    let ftype = if m.is_dir() { "directory" }
+                        else if m.is_symlink() { "symlink" }
+                        else if m.is_file() { "file" }
+                        else { "other" };
+                    println!("File: {}", path);
+                    println!("  Type: {}", ftype);
+                    println!("  Size: {} bytes", m.len());
+                    use std::os::unix::fs::PermissionsExt;
+                    println!("  Permissions: {:o}", m.permissions().mode() & 0o777);
+                    if let Ok(mtime) = m.modified() {
+                        if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                            println!("  Modified: {} (epoch)", dur.as_secs());
+                        }
+                    }
+                    EXIT_ALLOWED
+                }
+                Err(e) => {
+                    eprintln!("stat: {}", e);
+                    EXIT_ERROR
+                }
+            }
+        }
+        // ── Agent memory builtins ─────────────────────────────────────────
+        "__builtin_session_start" => crate::agent::cmd_session_start(args),
+        "__builtin_session_status" => crate::agent::cmd_session_status(),
+        "__builtin_session_end" => crate::agent::cmd_session_end(),
+        "__builtin_session_goal" => crate::agent::cmd_session_goal(args),
+        "__builtin_remember" => crate::agent::cmd_remember(args),
+        "__builtin_recall" => crate::agent::cmd_recall(args),
+        "__builtin_observe" => crate::agent::cmd_observe(args),
+        "__builtin_forget" => crate::agent::cmd_forget(args),
+        "__builtin_context_set" => crate::agent::cmd_context_set(args),
+        "__builtin_context_get" => crate::agent::cmd_context_get(args),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
             EXIT_ERROR
