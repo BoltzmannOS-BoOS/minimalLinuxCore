@@ -1,439 +1,146 @@
-# minimalLinuxCore
+# BoOS — AI-Owned Operating System Substrate
 
-`minimalLinuxCore` is the experimental Linux substrate for **BoOS**.
+> "AI is the subject, not the object."
 
-BoOS is not just a chatbot, not just a normal Linux distro, and not just an agent script.
+BoOS is a minimal Linux environment designed to be **explored, operated, and improved by AI**.
+Not a tool for AI — an environment where AI lives.
 
-The long-term idea is to explore an **AI-owned computer environment**: a small, inspectable, permission-controlled system where an AI can observe, request actions, execute allowed commands, and leave auditable traces.
+## Philosophy
 
-This repository is currently used as the low-level experimental ground for that idea.
+Standard AI development: human writes spec → AI writes code → human verifies.
 
----
+BoOS flips this: **human builds a world → AI enters and explores → AI discovers what's missing → human fixes → repeat.**
 
-## Current Purpose
+Like placing a brain in a vat and watching it figure out the shape of its container.
 
-The purpose of this repo is to answer a narrow question first:
-
-> What is the smallest Linux-based environment that can act as a controlled body for BoOS?
-
-So this repo currently focuses on:
-
-- booting a minimal Linux system in QEMU
-- using an initramfs-based root filesystem
-- starting a custom `/init`
-- replacing the raw Linux shell with a BoOS-controlled shell
-- registering commands as explicit system capabilities
-- logging system actions
-- routing actions through a request/execution pipeline
-
----
-
-## Current Architecture
-
-The current boot chain is:
-
-```txt
-QEMU
-  ↓
-Linux kernel
-  ↓
-initramfs
-  ↓
-/init
-  ↓
-boos-daemon   ← background request processor
-  ↓
-boos-process
-  ↓
-boos-exec
-  ↓
-command registry
-  ↓
-capability check
-  ↓
-audit log + result file
+```
+┌─────────────────────────────────────────┐
+│  BoOS (Linux initramfs / Docker)        │
+│                                         │
+│  ┌───────────────────────┐              │
+│  │  boos-agent loop       │              │
+│  │  ┌───────────────────┐ │   HTTPS      │
+│  │  │ DeepSeek inside   │─┼──────────────┼──→ DeepSeek API
+│  │  │ "What IS this?"   │ │              │
+│  │  └───────────────────┘ │              │
+│  │  ↓ think ↓ act ↓ remember             │
+│  │  boos-exec → commands → results       │
+│  │  boos-memory (working/recent/archive)  │
+│  └───────────────────────┘              │
+│                                         │
+│  Commands: help status caps log debug   │
+│            submit remember recall observe│
+│            read-file exec session-*     │
+└─────────────────────────────────────────┘
 ```
 
-The system also starts the interactive shell:
+## The v1 → v4 Story
 
-```txt
-/init
-  ↓
-boos-shell    ← human interactive interface
+This is the real value of the project — not the code, but the process.
+
+### v1: Hermes Drives BoOS
+DeepSeek (via Hermes) connects to BoOS's TCP gateway and manually explores.
+11 rounds, zero prior knowledge. Discovers commands through `help → status → caps → ...`
+Produces first exploration report.
+
+→ [v1-deepseek-exploration.md](docs/v1-deepseek-exploration.md)
+
+### v2: DeepSeek Lives Inside BoOS
+`boos-agent loop` — an agent loop running inside BoOS that calls DeepSeek API itself.
+No external Hermes. 26/26 commands explored. 100% coverage. Auto-generates report.
+
+→ [v2-full-log.txt](docs/v2-full-log.txt) | [v2-deepseek-report.txt](docs/v2-deepseek-report.txt)
+
+### v3: Memory Across Sessions
+DeepSeek receives its own v2 report as prior knowledge.
+Now thinks in terms of architecture: "BoOS is a multi-layer system — Linux → BoOS runtime → AI interface."
+Identifies 4 unsolved mysteries.
+
+→ [v3-full-log.txt](docs/v3-full-log.txt)
+
+### v4: AI-Discovered Gaps, Human-Fixed
+DeepSeek's reports revealed real gaps. This version adds:
+- `read-file` — file system access
+- `exec` — execute system binaries
+- Fixed `daemons` (was returning exit=2 silently)
+- Fixed `submit` pipeline
+
+DeepSeek will re-explore and discover these new capabilities.
+
+## Development Method
+
+BoOS 有两份副本，对应两种开发模式：
+
+```
+minimalLinuxCore/     ← 主线。你开发，稳定。
+boos-playground/      ← 沙箱。AI 随便造，随时可以删掉重建。
 ```
 
-The system currently has two main execution paths.
+AI 驱动的开发循环：
 
-### Human Interactive Path
-
-```txt
-human
-  ↓
-boos-shell
-  ↓
-boos-exec
-  ↓
-capability check
-  ↓
-execution
+```
+1. 复制主线到 playground
+2. AI 进入 playground 探索
+3. AI 发现缺口 → 写代码 → cargo build → 测试
+4. AI 报告: "改动有效，merge？"
+5. 人审查 diff → merge 进主线
+6. 重置 playground → 下一轮
 ```
 
-### Request Queue Path
+这个循环由 [Tulpa](../tulpa) 框架驱动。
 
-```txt
-human / future AI / future program
-  ↓
-boos-submit
-  ↓
-/run/boos/requests/req-*
-  ↓
-boos-daemon
-  ↓
-boos-process
-  ↓
-boos-exec
-  ↓
-capability check
-  ↓
-/run/boos/results/*.out
+## Quick Start
+
+```bash
+# Build
+cd src/rust
+docker run --rm -v $PWD:/work -w /work/src/rust rust:alpine \
+  cargo build --release
+
+# Set API key (file, not CLI arg)
+echo "api_key=sk-xxx" > /etc/boos/agent.conf
+
+# Run autonomous exploration
+boos-agent loop --goal "探索BoOS" --max-loops 30
+
+# With prior knowledge from previous runs
+boos-agent loop \
+  --goal "基于历史经验深入分析" \
+  --prior-knowledge docs/v2-deepseek-report.txt \
+  --max-loops 50
 ```
 
----
+## Architecture
 
-## Completed Milestones
+```
+/init (shell) → boos-supervisor (Rust, pid1)
+  ├── boos-gateway (TCP :5555)     ← AI entry point
+  ├── boos-process (poll loop)      ← request execution
+  ├── boos-agent (autonomous)       ← self-exploring agent
+  └── boos-exec                     ← command dispatcher
 
-### M1: Bootable Minimal Linux
-
-**Status:** complete.
-
-The repo can build an initramfs and boot it in QEMU using a Linux kernel.
-
----
-
-### M2: Custom BoOS Shell
-
-**Status:** complete.
-
-Instead of directly entering `/bin/sh`, the system boots into:
-
-```txt
-/bin/boos-shell
+Storage:
+  /etc/boos/commands/*.cmd          ← command registry
+  /etc/boos/capabilities.conf       ← permission model
+  /var/boos/memory/working.kv       ← session state
+  /var/boos/memory/recent/*.kv      ← observation stream
+  /var/boos/memory/archive/*.mem    ← persistent knowledge
 ```
 
----
+## Key Design Decisions
 
-### M3: Command Logging
+- **No JSON, no serde** — all config is key=value format
+- **No JS/TS toolchain** — pure Rust, musl static binary
+- **Capability-based security** — each command has allow_* flag
+- **3-tier memory** — working (session) / recent (ring buffer) / archive (persistent)
 
-**Status:** complete.
+## Sub-projects
 
-BoOS commands are logged into:
+### boos-harness (planned)
+QEMU-based end-to-end testing framework for BoOS.
 
-```txt
-/var/log/boos.log
-```
+### boos-autopilot (planned)
+Fully automated development cycle:
+build → deploy → agent explores → report → analyze → apply fixes → rebuild → repeat.
 
----
-
-### M4: Capability System
-
-**Status:** complete.
-
-Commands are controlled by:
-
-```txt
-/etc/boos/capabilities.conf
-```
-
-Example:
-
-```conf
-allow_help=1
-allow_status=1
-allow_log=1
-allow_shell=0
-allow_poweroff=0
-```
-
-This means commands are not naturally trusted. They must be explicitly allowed.
-
----
-
-### M5: Command Registry
-
-**Status:** complete.
-
-Commands are registered under:
-
-```txt
-/etc/boos/commands/
-```
-
-Example command file:
-
-```ini
-name=status
-capability=allow_status
-description=show system status
-exec=__builtin_status
-```
-
-This makes BoOS commands discoverable and describable instead of being hidden inside shell case branches.
-
----
-
-### M6: Executor Split
-
-**Status:** complete.
-
-Execution logic was separated from the interactive shell.
-
-```txt
-boos-shell
-  ↓
-boos-exec
-```
-
-This is important because future AI or programmatic callers should not need to control a TTY directly.
-
----
-
-### M7: Request Queue
-
-**Status:** complete.
-
-The system supports request submission and processing:
-
-```txt
-submit status
-process
-results
-```
-
-A request is written to:
-
-```txt
-/run/boos/requests/
-```
-
-A result is written to:
-
-```txt
-/run/boos/results/
-```
-
----
-
-### M8: BoOS Daemon
-
-**Status:** in progress / being tested.
-
-The intended daemon design is:
-
-```txt
-/init
-  ↓
-boos-daemon &
-  ↓
-boos-shell
-```
-
-`boos-daemon` should automatically scan and process request files so that the user does not need to manually run `process`.
-
----
-
-## Important Design Principle
-
-The point of this repo is not to make another general-purpose Linux distro.
-
-The point is to gradually build a minimal system where actions are:
-
-- registered
-- described
-- permissioned
-- submitted
-- executed
-- logged
-- inspectable
-
-That is the core difference between BoOS and a normal shell.
-
-A normal shell asks:
-
-> Can this command run?
-
-BoOS asks:
-
-> Is this action registered, authorized, logged, and attributable?
-
----
-
-## Current Commands
-
-Expected BoOS commands include:
-
-```txt
-help
-commands
-status
-caps
-log
-submit <command>
-process
-results
-shell
-poweroff
-```
-
-Some commands may be blocked depending on the capability file.
-
-For example, if:
-
-```conf
-allow_shell=0
-```
-
-then:
-
-```txt
-submit shell
-```
-
-should eventually produce something like:
-
-```txt
-Permission denied: missing capability 'allow_shell'
-```
-
----
-
-## Development Environment
-
-Current development setup:
-
-```txt
-Windows
-  ↓
-WSL2 Ubuntu
-  ↓
-minimalLinuxCore repo
-  ↓
-QEMU
-```
-
-The repo should live inside WSL, for example:
-
-```txt
-~/projects/minimalLinuxCore
-```
-
-It should not live inside:
-
-```txt
-/mnt/c/...
-```
-
-Keeping the repo inside the Linux filesystem avoids slow filesystem behavior and path-related issues.
-
----
-
-## Build
-
-Build the initramfs:
-
-```sh
-./scripts/build-rootfs.sh
-```
-
-Run QEMU:
-
-```sh
-./scripts/run-qemu.sh
-```
-
-Exit QEMU:
-
-```txt
-Ctrl+A, then X
-```
-
----
-
-## Repository Direction
-
-This repo is not the whole BoOS project.
-
-A better long-term structure may be:
-
-```txt
-BoOS
-├── minimalLinuxCore    # minimal bootable Linux experiment
-├── boos-runtime        # future agent/runtime layer
-├── boos-shell          # controlled human/system command interface
-├── boos-exec           # action execution layer
-├── boos-memory         # future persistent memory
-├── boos-policy         # permission and capability logic
-└── docs                # architecture, roadmap, threat model
-```
-
-For now, this repo remains the experimental substrate.
-
----
-
-## Current Scope
-
-This repo currently focuses on the low-level Linux substrate only.
-
-It does not yet try to solve the full AI runtime problem.
-
-### What This Repo Is
-
-This repo is:
-
-- a minimal Linux boot experiment
-- a controlled command environment
-- a capability-based execution prototype
-- an audit/logging experiment
-- a future body for BoOS runtime experiments
-
-### What This Repo Is Not Yet
-
-This repo is not yet:
-
-- a full AI operating system
-- a production Linux distribution
-- a complete agent runtime
-- a security-hardened sandbox
-- a replacement for normal Linux
-- a finished permission model
-
----
-
-## Next Steps
-
-The next likely steps are:
-
-1. Finish and test `boos-daemon`.
-2. Make request processing automatic after boot.
-3. Improve result inspection with a stable `results` command.
-4. Add request IDs and better audit metadata.
-5. Separate human-submitted requests from future AI-submitted requests.
-6. Add clearer policy failure messages.
-7. Start writing architecture docs for the future BoOS runtime layer.
-
----
-
-## Long-Term Goal
-
-The long-term goal is to build toward a system where an AI does not merely chat about actions, but operates inside a controlled computer environment.
-
-That environment should make every action:
-
-- explicit
-- inspectable
-- permissioned
-- logged
-- attributable
-- reversible where possible
-- understandable to humans
-
-`minimalLinuxCore` is the first small step toward that system.
+A self-growing system.

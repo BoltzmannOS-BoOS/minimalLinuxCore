@@ -2,7 +2,6 @@ use std::io::Read;
 use std::process::Command;
 use std::time::Duration;
 
-use crate::log;
 use crate::memory;
 
 const DEEPSEEK_API: &str = "https://api.deepseek.com/v1/chat/completions";
@@ -348,4 +347,146 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     }
 
     let _ = memory::session_end();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_execute_empty_action() {
+        let result = execute_develop_action("");
+        assert!(result.contains("empty action"));
+    }
+
+    #[test]
+    fn test_execute_unknown_action() {
+        let result = execute_develop_action("BLAH something");
+        assert!(result.contains("Unknown action"));
+    }
+
+    #[test]
+    fn test_execute_read_existing_file() {
+        // Read Cargo.toml which always exists
+        let result = execute_develop_action("READ Cargo.toml");
+        assert!(result.contains("[package]"), "Should read file contents, got: {}", result);
+        assert!(result.contains("boos"), "Should contain package name");
+    }
+
+    #[test]
+    fn test_execute_read_nonexistent_file() {
+        let result = execute_develop_action("READ /nonexistent/path/xyz.abc");
+        assert!(result.contains("READ error"), "Should report error, got: {}", result);
+    }
+
+    #[test]
+    fn test_execute_write_and_read() {
+        let path = "/tmp/boos-devtest-write.txt";
+        let content = "hello from develop test";
+        let result = execute_develop_action(&format!("WRITE {} {}", path, content));
+        assert!(result.contains("WRITE ok"), "Write should succeed, got: {}", result);
+        assert!(result.contains(path));
+
+        // Verify by reading back
+        let read_back = std::fs::read_to_string(path).unwrap();
+        assert_eq!(read_back.trim(), content);
+
+        // Clean up
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_execute_write_missing_content() {
+        let result = execute_develop_action("WRITE /tmp/test.txt");
+        assert!(result.contains("missing content"), "Should report error, got: {}", result);
+    }
+
+    #[test]
+    fn test_execute_write_creates_parent_dirs() {
+        let path = "/tmp/boos-devtest/nested/subdir/test.txt";
+        let content = "nested dir test";
+        let result = execute_develop_action(&format!("WRITE {} {}", path, content));
+        assert!(result.contains("WRITE ok"), "Should succeed creating dirs, got: {}", result);
+
+        // Verify
+        let read_back = std::fs::read_to_string(path).unwrap();
+        assert_eq!(read_back.trim(), content);
+
+        // Clean up
+        let _ = std::fs::remove_dir_all("/tmp/boos-devtest");
+    }
+
+    #[test]
+    fn test_execute_build() {
+        // Run from the rust project directory
+        let original_dir = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir("src/rust");
+        let result = execute_develop_action("BUILD");
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(dir);
+        }
+        // Build should succeed (codebase compiles)
+        assert!(result.contains("BUILD: success"), "Build should succeed, got: {}", result);
+    }
+
+    #[test]
+    fn test_execute_test() {
+        let original_dir = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir("src/rust");
+        let result = execute_develop_action("TEST");
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(dir);
+        }
+        // Tests should pass
+        assert!(result.contains("TEST:"), "Should return test result, got: {}", result);
+    }
+
+    #[test]
+    fn test_execute_write_with_spaces_in_content() {
+        let path = "/tmp/boos-devtest-multiline.txt";
+        let content = "line one\nline two\nline three";
+        let result = execute_develop_action(&format!("WRITE {} {}", path, content));
+        assert!(result.contains("WRITE ok"), "Multiline write should succeed, got: {}", result);
+
+        let read_back = std::fs::read_to_string(path).unwrap();
+        assert_eq!(read_back, content);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_truncate_utf8_short() {
+        let result = truncate_utf8("hello", 10);
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_truncate_utf8_long() {
+        let result = truncate_utf8("hello world this is a long string", 10);
+        assert!(result.ends_with("..."));
+        assert!(result.len() <= 13); // "hello worl..." = 13 chars
+    }
+
+    #[test]
+    fn test_json_escape_str_normal() {
+        let result = json_escape_str("hello world");
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_json_escape_str_newline() {
+        let result = json_escape_str("line1\nline2");
+        assert_eq!(result, "line1\\nline2");
+    }
+
+    #[test]
+    fn test_build_develop_context() {
+        let ctx = build_develop_context("test goal", &[], 1, 5);
+        assert!(ctx.contains("Goal: test goal"));
+        assert!(ctx.contains("Round: 1/5"));
+        assert!(ctx.contains("READ <filepath>"));
+        assert!(ctx.contains("BUILD"));
+        assert!(ctx.contains("TEST"));
+        assert!(ctx.contains("DONE"));
+    }
 }

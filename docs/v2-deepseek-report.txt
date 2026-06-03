@@ -1,0 +1,23 @@
+## BoOS 探索报告
+
+**会话ID**: agent-loop-1779947022  
+**目标**: 探索BoOS
+
+---
+
+### 系统概况
+
+BoOS 运行在 Linux 内核 6.10.14-linuxkit 之上，当前已运行 8382.6 秒（约 2.3 小时）。进程 PID 为 15，调用追踪显示正常。值得注意的是，**supervisor 未运行**——这可能是系统处于某种简化或维护模式。
+
+### 可用能力
+
+系统提供了一套命令注册机制。通过 `commands` 命令可以列出所有已注册命令，我目前有 26 条命令可用，已尝试 7 条，剩余 19 条未探索。命令包括：
+
+- **系统管理类**: `status`, `help`, `commands`, `poweroff`, `shell`, `debug`
+- **会话管理类**: `session-start`, `session-end`, `session-status`, `session-goal`, `context-get`, `context-set`
+- **记忆与存档类**: `remember`, `recall`, `forget`, `log`, `result`, `results`, `prune`, `rotate-logs`
+- **任务与驱动类**: `submit`, `process`, `mock-ai`, `caps`
+
+### 关键发现
+
+1. **权限限制**: 尝试执行 `poweroff` 命令时遭到拒绝，提示缺少 `poweroff`

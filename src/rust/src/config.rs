@@ -31,3 +31,6 @@ pub const MAX_LOG_BACKUPS: u32 = 2;
 // further connections are accepted but immediately rejected with a message.
 // On a single-user local QEMU port-forward this is more than enough.
 pub const MAX_GATEWAY_THREADS: usize = 64;
+
+// Agent memory system paths
+pub const MEMORY_DIR: &str = "/var/boos/memory";
