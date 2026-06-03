@@ -143,6 +143,60 @@ if [ -n "$SUB_ID" ]; then
     fi
 fi
 
+# --- 11. File Write Operations ---
+echo ""
+echo "--- 11. File Write Operations ---"
+check "write-file creates file" "Written" "write-file" "/tmp/boos-inttest.txt" "hello from BoOS integration test"
+
+# Confirm with read-file
+out=$(send "read-file /tmp/boos-inttest.txt")
+if echo "$out" | grep -q "hello from BoOS"; then
+    echo "  PASS: read-file confirms write-file"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: read-file does not confirm write"
+    echo "    got: $out"
+    FAIL=$((FAIL + 1))
+fi
+
+# --- 12. Directory Listing ---
+echo ""
+echo "--- 12. Directory Listing ---"
+check "list-dir shows file" "boos-inttest.txt" "list-dir" "/tmp"
+
+out=$(send "list-dir")
+if echo "$out" | grep -q "entries"; then
+    echo "  PASS: list-dir default works"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: list-dir default fails"
+    echo "    got: $out"
+    FAIL=$((FAIL + 1))
+fi
+
+# --- 13. File Stat ---
+echo ""
+echo "--- 13. File Stat ---"
+check "stat file type" "Type: file" "stat" "/tmp/boos-inttest.txt"
+check "stat dir type" "Type: directory" "stat" "/tmp"
+
+out=$(send "stat /nonexistent_path_xyz")
+if echo "$out" | grep -q "stat:"; then
+    echo "  PASS: stat errors on nonexistent"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: stat does not error on nonexistent"
+    echo "    got: $out"
+    FAIL=$((FAIL + 1))
+fi
+
+# --- 14. Read new commands visible ---
+echo ""
+echo "--- 14. New Command Discovery ---"
+check "write-file in commands" "write-file" "commands"
+check "list-dir in commands" "list-dir" "commands"
+check "stat in commands" "stat" "commands"
+
 echo ""
 echo "=== Integration Test Results ==="
 echo "Passed: $PASS"
