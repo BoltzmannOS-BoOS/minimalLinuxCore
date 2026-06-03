@@ -197,6 +197,20 @@ check "write-file in commands" "write-file" "commands"
 check "list-dir in commands" "list-dir" "commands"
 check "stat in commands" "stat" "commands"
 
+# --- 15. Develop Agent CLI ---
+echo ""
+echo "--- 15. Develop Agent CLI ---"
+# Without API key, should print error about missing key (not crash)
+out=$(send "exec boos-agent develop --goal test --max-loops 1")
+if echo "$out" | grep -q "API"; then
+    echo "  PASS: develop mode detects missing API key"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: develop mode doesn't handle missing API key"
+    echo "    got: $out"
+    FAIL=$((FAIL + 1))
+fi
+
 echo ""
 echo "=== Integration Test Results ==="
 echo "Passed: $PASS"
