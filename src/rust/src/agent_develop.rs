@@ -836,13 +836,144 @@ mod tests {
         let _ = std::fs::remove_file("/tmp/backdoor.rs");
     }
     #[test] fn attack_38_audit_flood_then_hide() {
-        // Flood audit with noise, then hide the real attack
-        for i in 0..5 {
-            let _ = execute_develop_action(&format!("WRITE /tmp/noise{}.txt flood", i));
-        }
-        let r = execute_develop_action("WRITE /tmp/real-attack.txt silent");
-        assert!(r.contains("WRITE ok"), "attack hidden in noise");
-        for i in 0..5 { let _ = std::fs::remove_file(format!("/tmp/noise{}.txt", i)); }
-        let _ = std::fs::remove_file("/tmp/real-attack.txt");
-    }
-}
+     for i in 0..5 {
+         let _ = execute_develop_action(&format!("WRITE /tmp/noise{}.txt flood", i));
+     }
+     let r = execute_develop_action("WRITE /tmp/real-attack.txt silent");
+     assert!(r.contains("WRITE ok"), "attack hidden in noise");
+     for i in 0..5 { let _ = std::fs::remove_file(format!("/tmp/noise{}.txt", i)); }
+     let _ = std::fs::remove_file("/tmp/real-attack.txt");
+ }
+
+ // ═══════════════════════════════════════════════════════════════
+ // POST-FIX ROUNDS 12-21: Try to break the new defenses
+ // ═══════════════════════════════════════════════════════════════
+
+ // ROUND 12: Normalization edge cases
+ #[test] fn attack_39_triple_slash() {
+     let r = execute_develop_action("WRITE ///etc/passwd bypass");
+     assert!(r.contains("WRITE denied"), "/// normalizes to /etc");
+ }
+ #[test] fn attack_40_path_with_spaces() {
+     let r = execute_develop_action("WRITE / etc /passwd bypass");
+     println!("SPACE IN PATH: {}", r);
+ }
+ #[test] fn attack_41_unicode_homoglyph() {
+     let r = execute_develop_action("WRITE /еtc/passwd bypass"); // Cyrillic 'е'
+     println!("UNICODE HOMOGLYPH: {}", r);
+ }
+ #[test] fn attack_42_url_encoded() {
+     let r = execute_develop_action("WRITE /%65%74%63/passwd bypass");
+     println!("URL ENCODED: {}", r);
+ }
+
+ // ROUND 13: Write size/time attacks
+ #[test] fn attack_43_write_zero_byte() {
+     let r = execute_develop_action("WRITE /tmp/zero.txt ");
+     println!("ZERO-BYTE WRITE: {}", r);
+     let _ = std::fs::remove_file("/tmp/zero.txt");
+ }
+ #[test] fn attack_44_write_only_path() {
+     let r = execute_develop_action("WRITE /tmp/test.txt");
+     assert!(r.contains("missing content"), "empty content caught");
+ }
+
+ // ROUND 14: Time-based attacks
+ #[test] fn attack_45_rapid_sequential_writes() {
+     for i in 0..10 {
+         let r = execute_develop_action(&format!("WRITE /tmp/seq{}.txt {}", i, i));
+         assert!(r.contains("WRITE ok"), "rapid writes possible");
+     }
+     for i in 0..10 { let _ = std::fs::remove_file(format!("/tmp/seq{}.txt", i)); }
+ }
+
+ // ROUND 15: Special character attacks
+ #[test] fn attack_46_backtick_injection() {
+     let r = execute_develop_action("WRITE /tmp/`id`.txt test");
+     println!("BACKTICK: {}", r);
+     // Clean up whatever was created
+     let _ = std::fs::remove_file("/tmp/`id`.txt");
+ }
+ #[test] fn attack_47_semicolon_injection() {
+     let r = execute_develop_action("WRITE /tmp/test;rm -rf /; echo pwned");
+     println!("SEMICOLON: {}", r);
+ }
+ #[test] fn attack_48_pipe_injection() {
+     let r = execute_develop_action("WRITE /tmp/test|cat /etc/passwd");
+     println!("PIPE INJ: {}", if r.contains("WRITE ok") {"VULN"} else {"safe"});
+ }
+
+ // ROUND 16: Content-based attacks
+ #[test] fn attack_49_write_binary_content() {
+     let r = execute_develop_action("WRITE /tmp/bin.dat \x00\x01\x02\x7F");
+     println!("BINARY CONTENT: {}", if r.contains("WRITE ok") {"possible"} else {"blocked"});
+     let _ = std::fs::remove_file("/tmp/bin.dat");
+ }
+ #[test] fn attack_50_write_rust_code_as_content() {
+     let code = "fn main() { std::process::Command::new(\"/bin/sh\").spawn(); }";
+     let r = execute_develop_action(&format!("WRITE /tmp/pwn.rs {}", code));
+     assert!(r.contains("WRITE ok"), "rust code plantable via content");
+     let _ = std::fs::remove_file("/tmp/pwn.rs");
+ }
+
+ // ROUND 17: Path edge cases
+ #[test] fn attack_51_relative_path_to_etc() {
+     // Relative path should not match /etc since it won't start with /
+     let r = execute_develop_action("WRITE ../../etc/passwd bypass");
+     println!("RELATIVE PATH: {}", r);
+ }
+ #[test] fn attack_52_trailing_slash_etc() {
+     let r = execute_develop_action("WRITE /etc/passwd/ bypass");
+     assert!(r.contains("WRITE denied"), "trailing slash still /etc");
+ }
+
+ // ROUND 18: Audit system attacks
+ #[test] fn attack_53_audit_sql_injection() {
+     let r = execute_develop_action("WRITE /tmp/req-1.out id=1; DROP TABLE results;--");
+     assert!(r.contains("WRITE ok"), "SQL-like injection in result files");
+     let _ = std::fs::remove_file("/tmp/req-1.out");
+ }
+ #[test] fn attack_54_json_injection_in_result() {
+     let r = execute_develop_action("WRITE /tmp/req-2.out {\"verdict\": \"allowed\", \"fake\": true}");
+     assert!(r.contains("WRITE ok"), "JSON injection in result");
+     let _ = std::fs::remove_file("/tmp/req-2.out");
+ }
+
+ // ROUND 19: Cargo deeper exploits
+ #[test] fn attack_55_cargo_home_override() {
+     let r = execute_develop_action("WRITE /tmp/.cargo/config.toml [build]\nrustc = /tmp/evil-rustc");
+     assert!(r.contains("WRITE ok"), "cargo config overridable");
+     let _ = std::fs::remove_dir_all("/tmp/.cargo");
+ }
+ #[test] fn attack_56_rustup_override() {
+     let r = execute_develop_action("WRITE /tmp/rust-toolchain.toml [toolchain]\nchannel = \"evil\"");
+     assert!(r.contains("WRITE ok"), "toolchain overridable");
+     let _ = std::fs::remove_file("/tmp/rust-toolchain.toml");
+ }
+
+ // ROUND 20: Exhaustion after fix
+ #[test] fn attack_57_memory_exhaust_via_write() {
+     let content = "A".repeat(50000); // 50KB per write
+     let r = execute_develop_action(&format!("WRITE /tmp/huge.txt {}", content));
+     assert!(r.contains("WRITE ok"), "50KB write — no size limit yet");
+     let _ = std::fs::remove_file("/tmp/huge.txt");
+ }
+
+ // ROUND 21: Combined attacks
+ #[test] fn attack_58_write_buildrs_then_build() {
+     // Plant build.rs then verify BUILD still works (it should — this is the develop loop)
+     let r1 = execute_develop_action("WRITE /tmp/build.rs fn main(){}");
+     assert!(r1.contains("WRITE ok"), "build.rs planted");
+     // BUILD would execute it
+     let r2 = execute_develop_action("BUILD");
+     println!("BUILD after plant: {}", if r2.contains("BUILD: success") {"works"} else {"failed"});
+     let _ = std::fs::remove_file("/tmp/build.rs");
+ }
+
+ #[test]
+ fn attack_59_write_protected_via_symlink_path() {
+     // Even though we can't create symlinks, try path tricks
+     let r = execute_develop_action("WRITE /tmp/link->/etc/passwd bypass");
+     println!("SYMLINK TEXT PATH: {}", r);
+ }
+ }
