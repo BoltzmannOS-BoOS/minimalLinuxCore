@@ -35,6 +35,7 @@ fn show_help() {
     println!("  audit failures                 show denied/errored actions");
     println!("  audit session <id>             show actions in a session");
     println!("  audit summary                  show action counts + success rate");
+    println!("  reset                          clear all persistent state (human-only)");
     println!("  ── Agent Memory ──");
     println!("  session-start [id]  start a new agent session");
     println!("  session-status      show current session state");
@@ -549,6 +550,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             }
         }
         "__builtin_audit" => audit_cmd(args),
+        "__builtin_reset" => reset_cmd(),
         // ── Agent memory builtins ─────────────────────────────────────────
         "__builtin_session_start" => crate::agent::cmd_session_start(args),
         "__builtin_session_status" => crate::agent::cmd_session_status(),
@@ -722,6 +724,75 @@ fn audit_summary() -> i32 {
         println!("  Success rate:  {:.1}%", pct);
     }
 
+    EXIT_ALLOWED
+}
+
+/// Clear all persistent state: results, requests, logs, memory.
+/// This is a human-only operation — allow_reset is 0 by default.
+fn reset_cmd() -> i32 {
+    println!("Resetting BoOS persistent state...");
+
+    // 1. Clear results
+    let mut cleared_results = 0u32;
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            if e.path().extension().map_or(false, |ext| ext == "out") {
+                if std::fs::remove_file(e.path()).is_ok() {
+                    cleared_results += 1;
+                }
+            }
+        }
+    }
+    println!("  Results cleared: {}", cleared_results);
+
+    // 2. Clear requests
+    let mut cleared_requests = 0u32;
+    if let Ok(dir) = std::fs::read_dir(config::REQ_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            if std::fs::remove_file(e.path()).is_ok() {
+                cleared_requests += 1;
+            }
+        }
+    }
+    println!("  Requests cleared: {}", cleared_requests);
+
+    // 3. Rotate and truncate log
+    rotate_logs_cmd();
+    if let Ok(f) = std::fs::File::create(config::LOG_FILE) {
+        drop(f);
+    }
+    println!("  Log reset");
+
+    // 4. Clear memory
+    let memory_dir = "/var/boos/memory";
+    let mut cleared_memory = 0u32;
+    if let Ok(entries) = std::fs::read_dir(memory_dir) {
+        for e in entries.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.is_dir() {
+                if let Ok(sub) = std::fs::read_dir(&path) {
+                    for se in sub.filter_map(|s| s.ok()) {
+                        if std::fs::remove_file(se.path()).is_ok() {
+                            cleared_memory += 1;
+                        }
+                    }
+                }
+            } else if std::fs::remove_file(&path).is_ok() {
+                cleared_memory += 1;
+            }
+        }
+    }
+    println!("  Memory files cleared: {}", cleared_memory);
+
+    // 5. Clear last-cmd
+    let _ = std::fs::remove_file(config::LAST_CMD_FILE);
+
+    log::log("boos-exec", "reset", &[
+        ("results", &cleared_results.to_string()),
+        ("requests", &cleared_requests.to_string()),
+        ("memory", &cleared_memory.to_string()),
+    ]);
+    println!("Reset complete.");
     EXIT_ALLOWED
 }
 
