@@ -31,6 +31,10 @@ fn show_help() {
     println!("  list-dir [path]                 list directory contents");
     println!("  stat <path>                     show file metadata");
     println!("  exec <binary> [args...]          execute a system binary");
+    println!("  audit recent [n]               show last N actions");
+    println!("  audit failures                 show denied/errored actions");
+    println!("  audit session <id>             show actions in a session");
+    println!("  audit summary                  show action counts + success rate");
     println!("  ── Agent Memory ──");
     println!("  session-start [id]  start a new agent session");
     println!("  session-status      show current session state");
@@ -544,6 +548,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
                 }
             }
         }
+        "__builtin_audit" => audit_cmd(args),
         // ── Agent memory builtins ─────────────────────────────────────────
         "__builtin_session_start" => crate::agent::cmd_session_start(args),
         "__builtin_session_status" => crate::agent::cmd_session_status(),
@@ -560,6 +565,164 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             EXIT_ERROR
         }
     }
+}
+
+// ── Audit functions ────────────────────────────────────────────────────────
+
+fn audit_cmd(args: &str) -> i32 {
+    let args = args.trim();
+    if args.is_empty() {
+        eprintln!("Usage: audit <recent|failures|session|summary> [args...]");
+        return EXIT_ERROR;
+    }
+    let (subcmd, rest) = match args.find(|c: char| c.is_whitespace()) {
+        Some(pos) => (&args[..pos], args[pos..].trim()),
+        None => (args, ""),
+    };
+    match subcmd {
+        "recent" => audit_recent(rest),
+        "failures" => audit_failures(),
+        "session" => audit_session(rest),
+        "summary" => audit_summary(),
+        _ => {
+            eprintln!("Unknown audit subcommand: {}", subcmd);
+            eprintln!("Usage: audit <recent|failures|session|summary>");
+            EXIT_ERROR
+        }
+    }
+}
+
+fn audit_recent(args: &str) -> i32 {
+    let n: usize = args.split_whitespace().next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
+    let mut entries: Vec<(String, std::fs::Metadata)> = Vec::new();
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.extension().map_or(false, |ext| ext == "out") {
+                if let Ok(meta) = path.metadata() {
+                    entries.push((path.to_string_lossy().to_string(), meta));
+                }
+            }
+        }
+    }
+    entries.sort_by(|a, b| {
+        let ta = a.1.modified().ok();
+        let tb = b.1.modified().ok();
+        tb.cmp(&ta)
+    });
+
+    println!("Recent {} actions:", n.min(entries.len()));
+    for (path_str, _) in entries.iter().take(n) {
+        let kv = registry::parse_kv_file(Path::new(path_str));
+        let id = kv.get("id").map(|s| s.as_str()).unwrap_or("?");
+        let cmd = kv.get("command").map(|s| s.as_str()).unwrap_or("?");
+        let args = kv.get("args").map(|s| s.as_str()).unwrap_or("");
+        let verdict = kv.get("verdict").map(|s| s.as_str()).unwrap_or("?");
+        let session = kv.get("session_id").map(|s| s.as_str()).unwrap_or("");
+        if args.is_empty() {
+            println!("  {} {} -> {} (session: {})", id, cmd, verdict, session);
+        } else {
+            println!("  {} {} {} -> {} (session: {})", id, cmd, args, verdict, session);
+        }
+    }
+    EXIT_ALLOWED
+}
+
+fn audit_failures() -> i32 {
+    println!("Denied and errored actions:");
+    let mut found = false;
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.extension().map_or(false, |ext| ext == "out") {
+                let kv = registry::parse_kv_file(&path);
+                let verdict = kv.get("verdict").map(|s| s.as_str()).unwrap_or("");
+                if verdict == "denied" || verdict == "error" || verdict == "unknown" {
+                    let id = kv.get("id").map(|s| s.as_str()).unwrap_or("?");
+                    let cmd = kv.get("command").map(|s| s.as_str()).unwrap_or("?");
+                    let exit_code = kv.get("exit_code").map(|s| s.as_str()).unwrap_or("?");
+                    println!("  {} {} -> {} (exit={})", id, cmd, verdict, exit_code);
+                    found = true;
+                }
+            }
+        }
+    }
+    if !found {
+        println!("  (no failures)");
+    }
+    EXIT_ALLOWED
+}
+
+fn audit_session(session_id: &str) -> i32 {
+    if session_id.is_empty() {
+        eprintln!("Usage: audit session <session-id>");
+        return EXIT_ERROR;
+    }
+    println!("Session: {}", session_id);
+    let mut found = false;
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.extension().map_or(false, |ext| ext == "out") {
+                let kv = registry::parse_kv_file(&path);
+                let sid = kv.get("session_id").map(|s| s.as_str()).unwrap_or("");
+                if sid == session_id {
+                    let id = kv.get("id").map(|s| s.as_str()).unwrap_or("?");
+                    let cmd = kv.get("command").map(|s| s.as_str()).unwrap_or("?");
+                    let verdict = kv.get("verdict").map(|s| s.as_str()).unwrap_or("?");
+                    let exit_code = kv.get("exit_code").map(|s| s.as_str()).unwrap_or("?");
+                    println!("  {} {} -> {} (exit={})", id, cmd, verdict, exit_code);
+                    found = true;
+                }
+            }
+        }
+    }
+    if !found {
+        println!("  (no actions in this session)");
+    }
+    EXIT_ALLOWED
+}
+
+fn audit_summary() -> i32 {
+    let mut total = 0u32;
+    let mut allowed = 0u32;
+    let mut denied = 0u32;
+    let mut error = 0u32;
+    let mut unknown = 0u32;
+
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.extension().map_or(false, |ext| ext == "out") {
+                let kv = registry::parse_kv_file(&path);
+                total += 1;
+                match kv.get("verdict").map(|s| s.as_str()).unwrap_or("") {
+                    "allowed" => allowed += 1,
+                    "denied" => denied += 1,
+                    "error" => error += 1,
+                    "unknown" => unknown += 1,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    println!("Audit Summary:");
+    println!("  Total actions: {}", total);
+    println!("  Allowed:       {}", allowed);
+    println!("  Denied:        {}", denied);
+    println!("  Errors:        {}", error);
+    println!("  Unknown:       {}", unknown);
+
+    if total > 0 {
+        let pct = (allowed as f64 / total as f64) * 100.0;
+        println!("  Success rate:  {:.1}%", pct);
+    }
+
+    EXIT_ALLOWED
 }
 
 pub fn main() {

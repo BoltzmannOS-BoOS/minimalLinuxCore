@@ -141,6 +141,25 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     }
     ctx.push_str("  src/rust/Cargo.toml (project config)\n");
 
+    // Include audit trail summary so the agent knows failure patterns
+    if let Ok(entries) = std::fs::read_dir("/var/boos/results") {
+        let mut total = 0u32;
+        let mut failures = 0u32;
+        for e in entries.filter_map(|e| e.ok()) {
+            if e.path().extension().map_or(false, |ext| ext == "out") {
+                let kv = crate::registry::parse_kv_file(&e.path());
+                total += 1;
+                let v = kv.get("verdict").map(|s| s.as_str()).unwrap_or("");
+                if v == "denied" || v == "error" || v == "unknown" {
+                    failures += 1;
+                }
+            }
+        }
+        if total > 0 {
+            ctx.push_str(&format!("\nAudit: {} past actions, {} failures (in /var/boos/results)\n", total, failures));
+        }
+    }
+
     // Show recent actions (last 5)
     if !recent_actions.is_empty() {
         ctx.push_str("\nRecent actions:\n");
