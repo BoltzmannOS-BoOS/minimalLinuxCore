@@ -1,0 +1,62 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.40
+   Compiling rustls-webpki v0.103.13
+   Compiling ureq v2.12.1
+   Compiling boos v0.1.0 (/Users/hostsjim/project/minimalLinuxCore/src/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.50s
+     Running unittests src/main.rs (target/debug/deps/boos-48d34c31ae933e70)
+
+running 41 tests
+test agent_develop::tests::test_execute_empty_action ... ok
+test agent_develop::tests::test_build_develop_context ... ok
+test agent_develop::tests::test_execute_read_nonexistent_file ... ok
+test agent_develop::tests::test_execute_unknown_action ... ok
+test agent_develop::tests::test_execute_read_existing_file ... ok
+test agent_develop::tests::test_execute_write_missing_content ... ok
+test agent_develop::tests::test_json_escape_str_newline ... ok
+test agent_develop::tests::test_json_escape_str_normal ... ok
+test agent_develop::tests::test_execute_write_and_read ... ok
+test agent_develop::tests::test_execute_write_with_spaces_in_content ... ok
+test agent_develop::tests::test_truncate_utf8_long ... ok
+test agent_develop::tests::test_truncate_utf8_short ... ok
+test log::tests::test_duration_ms ... ok
+test log::tests::test_duration_ms_zero ... ok
+test log::tests::test_json_escape_backslash ... ok
+test log::tests::test_json_escape_combined ... ok
+test log::tests::test_json_escape_control_chars ... ok
+test log::tests::test_json_escape_newline ... ok
+test log::tests::test_json_escape_normal_string ... ok
+test log::tests::test_json_escape_quotes ... ok
+test memory::tests::test_context_roundtrip ... ok
+test memory::tests::test_archive_kv_roundtrip ... ok
+test memory::tests::test_join_split_list ... ok
+test memory::tests::test_sanitize_filename ... ok
+test memory::tests::test_recent_entry_kv_roundtrip ... ok
+test agent_develop::tests::test_execute_write_creates_parent_dirs ... ok
+test registry::tests::test_is_enabled_nonexistent_file ... ok
+test registry::tests::test_parse_params ... ok
+test memory::tests::test_working_memory_save_load ... ok
+test registry::tests::test_parse_params_default_required ... ok
+test registry::tests::test_parse_params_empty ... ok
+test registry::tests::test_parse_params_multiple ... ok
+test registry::tests::test_parse_kv_file_empty ... ok
+test registry::tests::test_parse_kv_file ... ok
+test submit::tests::test_generate_id_format ... ok
+test registry::tests::test_parse_kv_file_comments ... ok
+test registry::tests::test_command_backward_compat ... ok
+test submit::tests::test_random_suffix_varies ... ok
+test submit::tests::test_generate_id_uniqueness_rapid ... ok
+test agent_develop::tests::test_execute_build ... ok
+test agent_develop::tests::test_execute_test ... ok
+
+test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.87s
+
+     Running unittests ../../tools/tcp-client.rs (target/debug/deps/tcp_client-106bcd098cef3d22)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+---
+Timestamp: 2026-06-04T02:44:33Z
+Commit: 40fa5d8046a5352ff3518b086dc6b48fb6e75671

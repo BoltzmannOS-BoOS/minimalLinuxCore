@@ -1,0 +1,41 @@
+40fa5d8 feat: implement audit command — recent, failures, session, summary; add audit to develop agent context
+cf8d8fd feat: register audit command with capability flag
+af41640 fix: BUILD/TEST CWD handling with save/restore, prevent path leak across rounds
+394964f test: add 15 unit tests for agent_develop, fix warnings
+283af6f test: add develop agent CLI smoke test
+c15f7bf feat: add agent_develop.rs — DeepSeek-driven code iteration loop
+5fd45a7 feat: add develop subcommand wiring to agent CLI
+32337d7 test: add integration tests for write-file, list-dir, stat
+854e855 fix: use relative path for tcp-client binary in Cargo.toml
+2152620 feat: implement write-file, list-dir, stat builtins in exec.rs
+885a2cb feat: register write-file, list-dir, stat commands
+fdb14fc feat: add allow_write_file, allow_list_dir, allow_stat capability flags
+10fe2b4 [goal-5] integration test passes: 19/19 with Rust TCP client
+3cb3337 [goal-5] integration test suite: 13 test categories, 30+ checks
+36c39f6 [goal-4] config hot reload: daemon.conf & capabilities.conf auto-detect
+809994f [goal-3] session tracking: session_id from gateway to request to result
+f34433b [goal-2] submit --wait: synchronous request-result in one call
+01acafc [fix] security audit fixes for Rust shell & supervisor
+41365be [m16] Rust boos-shell — eliminate last shell command dispatch
+6057c85 [m16] Rust boos-supervisor — absorb boos-daemon, eliminate TOCTOU
+998ceaa [security] fix S1-S6 shell vulnerabilities: glob injection, backslash escape, TOCTOU, error swallowing, hardcoded poll
+9417081 graphify-out: keep product graphs only, ignore cache/backups
+6f08368 Add project-level graphify workflow for collaborators
+76ea82b Add project knowledge graph via Graphify
+c6e9b68 Ignore build artifacts
+98027a6 claude redo
+d79e757 M15: Rust rewrite of core components (boos-exec, boos-process, boos-submit, boos-gateway)
+8c54e4c Add AI client connection (M9) and refactor PLAN.md with new design philosophy
+8b45dcf fix the format problem in markdown
+1d23594 Document minimalLinuxCore progress and plan
+3444d55 Add BoOS daemon for automatic request processing
+45aeb0b Split BoOS shell and executor
+d0dfcb8 Add command registry to BoOS shell
+7c837fb Add capability checks to BoOS shell
+eb4f14a Add command logging to BoOS shell
+063677b Add initial BoOS controlled shell
+c02f74e Boot custom init in minimal Linux core
+ac27366 Add minimal Linux core skeleton
+e213b62 Add minimal Linux core skeleton
+59fb2e7 license
+68d49d8 first commit
