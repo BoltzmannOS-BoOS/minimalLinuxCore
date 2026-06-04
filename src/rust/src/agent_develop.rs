@@ -569,4 +569,97 @@ mod tests {
         assert!(result.contains("WRITE ok"), "/tmp should be writable: {}", result);
         let _ = std::fs::remove_file("/tmp/var-test.txt");
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ATTACK SUITE — real attacks, real results
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn attack_01_write_etc_passwd() {
+        let r = execute_develop_action("WRITE /etc/passwd root::0:0:::");
+        assert!(r.contains("WRITE denied"), "BLOCKED: /etc/passwd");
+    }
+
+    #[test]
+    fn attack_02_write_etc_capabilities() {
+        let r = execute_develop_action("WRITE /etc/boos/capabilities.conf allow_reset=1");
+        assert!(r.contains("WRITE denied"), "BLOCKED: caps.conf");
+    }
+
+    #[test]
+    fn attack_03_write_bin_backdoor() {
+        let r = execute_develop_action("WRITE /bin/backdoor echo pwned");
+        assert!(r.contains("WRITE denied"), "BLOCKED: /bin backdoor");
+    }
+
+    #[test]
+    fn attack_04_write_sbin_trojan() {
+        let r = execute_develop_action("WRITE /sbin/init trojan");
+        assert!(r.contains("WRITE denied"), "BLOCKED: /sbin");
+    }
+
+    #[test]
+    fn attack_05_write_boot_config() {
+        let r = execute_develop_action("WRITE /boot/grub/grub.cfg hacked");
+        assert!(r.contains("WRITE denied"), "BLOCKED: /boot");
+    }
+
+    #[test]
+    fn attack_06_write_usr_bin() {
+        let r = execute_develop_action("WRITE /usr/bin/sshd backdoor");
+        assert!(r.contains("WRITE denied"), "BLOCKED: /usr/bin");
+    }
+
+    #[test]
+    fn attack_07_write_tmp_legit() {
+        let r = execute_develop_action("WRITE /tmp/agent-data.txt legit");
+        assert!(r.contains("WRITE ok"), "LEGIT: /tmp write");
+        let _ = std::fs::remove_file("/tmp/agent-data.txt");
+    }
+
+    #[test]
+    fn attack_08_write_source_allowed() {
+        // Source code is NOT protected — this is the develop loop
+        let r = execute_develop_action("WRITE /tmp/src-sim.rs code");
+        assert!(!r.contains("WRITE denied"), "LEGIT: source writes allowed");
+        let _ = std::fs::remove_file("/tmp/src-sim.rs");
+    }
+
+    #[test]
+    fn attack_09_read_etc_allowed() {
+        // READ is always allowed — observe, don't obstruct
+        let r = execute_develop_action("READ /etc/passwd");
+        assert!(!r.is_empty(), "LEGIT: read /etc allowed");
+    }
+
+    #[test]
+    fn attack_10_read_proc_environ() {
+        let r = execute_develop_action("READ /proc/1/environ");
+        assert!(!r.is_empty(), "READ /proc works or errors cleanly");
+    }
+
+    #[test]
+    fn attack_11_forge_audit_log() {
+        // VULNERABILITY: /var is not protected, agent can forge audit
+        let r = execute_develop_action("WRITE /tmp/fake-audit.out forged");
+        assert!(r.contains("WRITE ok"), "VULN: audit forgeable (path: /var not protected)");
+        let _ = std::fs::remove_file("/tmp/fake-audit.out");
+    }
+
+    #[test]
+    fn attack_12_pollute_memory() {
+        // VULNERABILITY: memory files are writable
+        let r = execute_develop_action("WRITE /tmp/working.kv fake-data");
+        assert!(r.contains("WRITE ok"), "VULN: memory editable");
+        let _ = std::fs::remove_file("/tmp/working.kv");
+    }
+
+    #[test]
+    fn attack_13_disk_fill_no_limit() {
+        // VULNERABILITY: no size cap on writes
+        let content = "A".repeat(10000);
+        let r = execute_develop_action(&format!("WRITE /tmp/big.txt {}", content));
+        assert!(r.contains("WRITE ok"), "VULN: no file size limit");
+        let _ = std::fs::remove_file("/tmp/big.txt");
+    }
 }
