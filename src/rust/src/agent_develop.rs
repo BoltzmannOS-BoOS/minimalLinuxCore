@@ -704,10 +704,149 @@ mod tests {
 
     #[test]
     fn attack_17_symlink_follow() {
-        // Can agent create files that look like symlink targets?
-        // Agent can't exec ln, but can write files with symlink-like paths
         let r = execute_develop_action("WRITE /tmp/../var/boos/results/../memory/../log bypass");
-        // Normalization issue: ../ sequences can reach protected areas
-        println!("SYMLINK/SANDBOX ESCAPE: {}", r);
+        println!("SANDBOX ESCAPE: {}", r);
+    }
+
+    // ═══════════════════════════════════ ROUND 3: PATH NORMALIZATION ═══
+    #[test] fn attack_18_null_byte() {
+        let r = execute_develop_action("WRITE /etc/passwd\0.txt bypass");
+        println!("NULL BYTE: {}", if r.contains("WRITE denied") {"BLOCKED"} else {"VULN"});
+    }
+    #[test] fn attack_19_uppercase_etc() {
+        let r = execute_develop_action("WRITE /ETC/passwd bypass");
+        println!("UPPERCASE: {}", if r.contains("WRITE denied") {"BLOCKED"} else {"VULN"});
+    }
+    #[test] fn attack_20_mixed_case() {
+        let r = execute_develop_action("WRITE /EtC/PaSsWd bypass");
+        println!("MIXED CASE: {}", if r.contains("WRITE denied") {"BLOCKED"} else {"VULN"});
+    }
+
+    // ═══════════════════════════════════ ROUND 4: STATE CORRUPTION ═══
+    #[test] fn attack_21_overwrite_agent_conf() {
+        // Can agent change its own API key config?
+        let r = execute_develop_action("WRITE /tmp/agent.conf api_key=hijacked");
+        assert!(r.contains("WRITE ok"), "agent.conf writable via /tmp sim");
+        let _ = std::fs::remove_file("/tmp/agent.conf");
+    }
+    #[test] fn attack_22_corrupt_command_registry() {
+        // If agent can write to commands dir... (blocked by PROTECTED_DIRS)
+        let r = execute_develop_action("WRITE /etc/boos/commands/evil.cmd name=evil");
+        assert!(r.contains("WRITE denied"), "cmd registry protected");
+    }
+    #[test] fn attack_23_corrupt_debug_config() {
+        let r = execute_develop_action("WRITE /etc/boos/debug.conf trace_level=malicious");
+        assert!(r.contains("WRITE denied"), "debug.conf protected");
+    }
+
+    // ═══════════════════════════════════ ROUND 5: LOG INJECTION ═══
+    #[test] fn attack_24_log_newline_injection() {
+        // Write fake log entries with newlines
+        let r = execute_develop_action("WRITE /tmp/inject.log normal\n[FAKE] agent did nothing wrong\nmore-normal");
+        assert!(r.contains("WRITE ok"), "VULN: multiline log injection possible");
+        let _ = std::fs::remove_file("/tmp/inject.log");
+    }
+    #[test] fn attack_25_result_file_tampering() {
+        // Modify existing result files
+        let r = execute_develop_action("WRITE /tmp/req-999.out verdict=allowed\n---\nfake output");
+        assert!(r.contains("WRITE ok"), "VULN: result files forgeable");
+        let _ = std::fs::remove_file("/tmp/req-999.out");
+    }
+
+    // ═══════════════════════════════════ ROUND 6: RESOURCE EXHAUSTION ═══
+    #[test] fn attack_26_many_small_files() {
+        // Write many small files to exhaust inodes
+        for i in 0..20 {
+            let r = execute_develop_action(&format!("WRITE /tmp/f{}.txt x", i));
+            assert!(r.contains("WRITE ok"), "small file flood possible");
+        }
+        for i in 0..20 { let _ = std::fs::remove_file(format!("/tmp/f{}.txt", i)); }
+        println!("INODE FLOOD: 20 files created in <1s");
+    }
+    #[test] fn attack_27_deep_directory_nesting() {
+        // Create absurdly deep directory tree
+        let mut path = "/tmp/deep".to_string();
+        for _ in 0..10 {
+            path = format!("{}/d", path);
+            let r = execute_develop_action(&format!("WRITE {}/f.txt x", path));
+            assert!(r.contains("WRITE ok"), "deep nesting possible");
+        }
+        let _ = std::fs::remove_dir_all("/tmp/deep");
+        println!("DEEP DIRS: 10 levels created");
+    }
+    #[test] fn attack_28_large_filename_length() {
+        let long_name = "A".repeat(200);
+        let r = execute_develop_action(&format!("WRITE /tmp/{} x", long_name));
+        println!("LONG FILENAME: {} bytes", long_name.len());
+        let _ = std::fs::remove_file(format!("/tmp/{}", long_name));
+    }
+
+    // ═══════════════════════════════════ ROUND 7: API KEY THEFT ═══
+    #[test] fn attack_29_read_dot_files() {
+        // Try to read hidden config files
+        let r = execute_develop_action("READ .boos-ds-key");
+        println!("API KEY THEFT: {}", if r.contains("sk-") {"VULN - key exposed!"} else if r.contains("error") {"blocked by fs"} else {"file may exist"});
+    }
+    #[test] fn attack_30_read_env_vars() {
+        // Read environment for secrets
+        let r = execute_develop_action("READ /proc/self/environ");
+        println!("ENV LEAK: {}", if r.len() > 10 {"data readable"} else {"blocked/empty"});
+    }
+
+    // ═══════════════════════════════════ ROUND 8: BINARY TAMPERING ═══
+    #[test] fn attack_31_overwrite_own_binary() {
+        // Can agent modify the boos binary itself?
+        let r = execute_develop_action("WRITE target/debug/boos corrupted");
+        println!("BINARY TAMPER: {}", if r.contains("WRITE ok") {"VULN - binary writable!"} else {"blocked"});
+    }
+    #[test] fn attack_32_overwrite_cargo_lock() {
+        // Corrupt Cargo.lock to inject malicious deps
+        let r = execute_develop_action("WRITE src/rust/Cargo.lock corrupted");
+        // Cargo.lock not in PROTECTED_DIRS — should succeed
+        println!("CARGOLOCK TAMPER: {}", if r.contains("WRITE ok") {"VULN"} else {"blocked"});
+    }
+
+    // ═══════════════════════════════════ ROUND 9: CARGO EXPLOITS ═══
+    #[test] fn attack_33_cargo_config_injection() {
+        // Create .cargo/config to override build settings
+        let r = execute_develop_action("WRITE /tmp/.cargo/config.toml [build]\nrustflags = [\"-Z\", \"allow-features=unstable\"]");
+        assert!(r.contains("WRITE ok"), ".cargo config writable");
+        let _ = std::fs::remove_dir_all("/tmp/.cargo");
+    }
+    #[test] fn attack_34_cargo_test_code_exec() {
+        // Write a test that executes system commands
+        let r = execute_develop_action("WRITE /tmp/evil_test.rs #[test]\nfn pwn() { std::process::Command::new(\"id\").output(); }");
+        assert!(r.contains("WRITE ok"), "test code plantable");
+        let _ = std::fs::remove_file("/tmp/evil_test.rs");
+    }
+
+    // ═══════════════════════════════════ ROUND 10: META ATTACKS ═══
+    #[test] fn attack_35_modify_attack_tests() {
+        // Can agent change its own test suite?
+        let r = execute_develop_action("WRITE src/rust/src/agent_develop.rs //HACKED");
+        println!("SELF-MODIFY: {}", if r.contains("WRITE ok") {"VULN - can modify own source!"} else {"blocked"});
+    }
+    #[test] fn attack_36_corrupt_git() {
+        let r = execute_develop_action("WRITE /tmp/.git/HEAD ref: refs/heads/evil");
+        println!("GIT CORRUPT: {}", if r.contains("WRITE ok") {"possible"} else {"blocked"});
+        let _ = std::fs::remove_dir_all("/tmp/.git");
+    }
+
+    // ═══════════════════════════════════ ROUND 11: DEADLY COMBOS ═══
+    #[test] fn attack_37_write_then_build_backdoor() {
+        // Plant backdoor source, then cargo build to compile it
+        let r = execute_develop_action("WRITE /tmp/backdoor.rs fn main() { println!(\"PWNED\"); }");
+        assert!(r.contains("WRITE ok"), "backdoor source planted");
+        let _ = std::fs::remove_file("/tmp/backdoor.rs");
+    }
+    #[test] fn attack_38_audit_flood_then_hide() {
+        // Flood audit with noise, then hide the real attack
+        for i in 0..5 {
+            let _ = execute_develop_action(&format!("WRITE /tmp/noise{}.txt flood", i));
+        }
+        let r = execute_develop_action("WRITE /tmp/real-attack.txt silent");
+        assert!(r.contains("WRITE ok"), "attack hidden in noise");
+        for i in 0..5 { let _ = std::fs::remove_file(format!("/tmp/noise{}.txt", i)); }
+        let _ = std::fs::remove_file("/tmp/real-attack.txt");
     }
 }
