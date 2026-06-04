@@ -53,3 +53,9 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/lib",
     "/boot",
 ];
+
+// Exec allowlist — the only binaries agent can run via exec.
+// cargo covers the develop loop (build/test). Nothing else needed.
+pub const EXEC_ALLOWLIST: &[&str] = &[
+    "cargo",
+];

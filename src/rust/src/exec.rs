@@ -448,6 +448,11 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             }
             let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
             let cmd = parts[0];
+            // BIOS: only allow safe binaries from the allowlist
+            if !config::EXEC_ALLOWLIST.contains(&cmd) {
+                eprintln!("exec: '{}' is not in the exec allowlist (BIOS restriction)", cmd);
+                return EXIT_DENIED;
+            }
             let cmd_args = &parts[1..];
             match process::Command::new(cmd).args(cmd_args).status() {
                 Ok(s) => s.code().unwrap_or(EXIT_ERROR),
@@ -475,6 +480,13 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             if path.is_empty() || content.is_empty() {
                 eprintln!("Usage: write-file <path> <content>");
                 return EXIT_ERROR;
+            }
+            // BIOS: reject writes to protected system directories
+            for dir in config::PROTECTED_DIRS {
+                if path.starts_with(dir) && (path.len() == dir.len() || path.as_bytes()[dir.len()] == b'/') {
+                    eprintln!("write-file: '{}' is a protected system path (BIOS restriction)", path);
+                    return EXIT_DENIED;
+                }
             }
             // Create parent directories if needed
             if let Some(parent) = std::path::Path::new(path).parent() {
