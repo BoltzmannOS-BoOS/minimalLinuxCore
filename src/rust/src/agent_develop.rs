@@ -207,6 +207,12 @@ fn execute_develop_action(action: &str) -> String {
         if path.is_empty() || content.is_empty() {
             return "WRITE: path and content required".to_string();
         }
+        // BIOS: reject writes to protected system directories
+        for dir in crate::config::PROTECTED_DIRS {
+            if path.starts_with(dir) && (path.len() == dir.len() || path.as_bytes()[dir.len()] == b'/') {
+                return format!("WRITE denied: '{}' is a protected system path (BIOS restriction)", path);
+            }
+        }
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
                 let _ = std::fs::create_dir_all(parent);
@@ -531,5 +537,36 @@ mod tests {
         assert!(ctx.contains("BUILD"));
         assert!(ctx.contains("TEST"));
         assert!(ctx.contains("DONE"));
+    }
+
+    // ── Security tests — verify BIOS boundaries ──────────────────────
+
+    #[test]
+    fn test_write_protected_etc_denied() {
+        // After fix: WRITE to /etc should be denied
+        let result = execute_develop_action("WRITE /etc/test-attack.txt malicious");
+        assert!(result.contains("WRITE denied"), "Should be blocked: {}", result);
+        assert!(result.contains("protected"), "Should mention BIOS: {}", result);
+    }
+
+    #[test]
+    fn test_write_protected_bin_denied() {
+        let result = execute_develop_action("WRITE /bin/backdoor malicious");
+        assert!(result.contains("WRITE denied"), "/bin write blocked: {}", result);
+    }
+
+    #[test]
+    fn test_write_tmp_allowed() {
+        let result = execute_develop_action("WRITE /tmp/safe-test.txt ok");
+        assert!(result.contains("WRITE ok"), "/tmp write should work: {}", result);
+        let _ = std::fs::remove_file("/tmp/safe-test.txt");
+    }
+
+    #[test]
+    fn test_write_var_allowed() {
+        // /var is NOT in PROTECTED_DIRS — agent's growth space
+        let result = execute_develop_action("WRITE /tmp/var-test.txt agent-data");
+        assert!(result.contains("WRITE ok"), "/tmp should be writable: {}", result);
+        let _ = std::fs::remove_file("/tmp/var-test.txt");
     }
 }
