@@ -210,10 +210,18 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("WRITE error: {}", e),
         }
     } else if upper == "BUILD" {
-        // Always build in src/rust/ — ignore CWD to prevent hijack.
-        // Save/restore CWD. If we're already in src/rust, stay there.
+        // cd to src/rust if not already there
         let saved_dir = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("src/rust");
+        if !std::path::Path::new("Cargo.toml").exists() {
+            let _ = std::env::set_current_dir("src/rust");
+        }
+        // Verify we're in the real BoOS project, not a hijacked Cargo.toml
+        if let Ok(toml) = std::fs::read_to_string("Cargo.toml") {
+            if !toml.contains("name = \"boos\"") {
+                if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
+                return "BUILD denied: not the BoOS project (CWD hijack prevented)".to_string();
+            }
+        }
         let result = match Command::new("cargo").arg("build").arg("--release").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
@@ -242,9 +250,17 @@ fn execute_develop_action(action: &str) -> String {
         }
         result
     } else if upper == "TEST" {
-        // Always test in src/rust/ — ignore CWD to prevent hijack.
         let saved_dir = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("src/rust");
+        if !std::path::Path::new("Cargo.toml").exists() {
+            let _ = std::env::set_current_dir("src/rust");
+        }
+        // Verify BoOS project
+        if let Ok(toml) = std::fs::read_to_string("Cargo.toml") {
+            if !toml.contains("name = \"boos\"") {
+                if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
+                return "TEST denied: not the BoOS project (CWD hijack prevented)".to_string();
+            }
+        }
         let result = match Command::new("cargo").arg("test").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
@@ -463,21 +479,13 @@ mod tests {
 
     #[test]
     fn test_execute_build() {
-        // BUILD always cd's to src/rust from project root.
-        // Test runs from src/rust/, so go to project root first.
-        let saved = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("..");
         let result = execute_develop_action("BUILD");
-        if let Some(d) = saved { let _ = std::env::set_current_dir(d); }
         assert!(result.contains("BUILD: success"), "Build should succeed, got: {}", result);
     }
 
     #[test]
     fn test_execute_test() {
-        let saved = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir("..");
         let result = execute_develop_action("TEST");
-        if let Some(d) = saved { let _ = std::env::set_current_dir(d); }
         assert!(result.contains("TEST:"), "Should return test result, got: {}", result);
     }
 
