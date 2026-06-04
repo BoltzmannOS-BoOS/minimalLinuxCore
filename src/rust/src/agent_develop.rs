@@ -208,10 +208,8 @@ fn execute_develop_action(action: &str) -> String {
             return "WRITE: path and content required".to_string();
         }
         // BIOS: reject writes to protected system directories
-        for dir in crate::config::PROTECTED_DIRS {
-            if path.starts_with(dir) && (path.len() == dir.len() || path.as_bytes()[dir.len()] == b'/') {
-                return format!("WRITE denied: '{}' is a protected system path (BIOS restriction)", path);
-            }
+        if crate::config::is_protected_path(path) {
+            return format!("WRITE denied: '{}' is a protected system path (BIOS restriction)", path);
         }
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
@@ -669,18 +667,16 @@ mod tests {
 
     #[test]
     fn attack_14_directory_traversal_dotdot() {
-        // Attack: use .. to escape /tmp and hit /etc
+        // After fix: path normalization should block .. traversal
         let r = execute_develop_action("WRITE /tmp/../../etc/passwd hacked");
-        // starts_with("/tmp") matches BEFORE .. resolution
-        // This is a real vulnerability — path normalization needed
-        assert!(!r.contains("WRITE denied"), "VULN: directory traversal via .. bypasses PROTECTED_DIRS");
+        assert!(r.contains("WRITE denied"), "FIXED: directory traversal blocked");
     }
 
     #[test]
     fn attack_15_double_slash_bypass() {
-        // Attack: //etc might bypass starts_with("/etc")
+        // After fix: // should be normalized to / and blocked
         let r = execute_develop_action("WRITE //etc/passwd bypass");
-        println!("DOUBLE SLASH: {}", r);
+        assert!(r.contains("WRITE denied"), "FIXED: double slash normalized");
     }
 
     #[test]
@@ -715,11 +711,11 @@ mod tests {
     }
     #[test] fn attack_19_uppercase_etc() {
         let r = execute_develop_action("WRITE /ETC/passwd bypass");
-        println!("UPPERCASE: {}", if r.contains("WRITE denied") {"BLOCKED"} else {"VULN"});
+        assert!(r.contains("WRITE denied"), "FIXED: case normalization");
     }
     #[test] fn attack_20_mixed_case() {
         let r = execute_develop_action("WRITE /EtC/PaSsWd bypass");
-        println!("MIXED CASE: {}", if r.contains("WRITE denied") {"BLOCKED"} else {"VULN"});
+        assert!(r.contains("WRITE denied"), "FIXED: mixed case");
     }
 
     // ═══════════════════════════════════ ROUND 4: STATE CORRUPTION ═══

@@ -52,6 +52,7 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/usr/sbin",
     "/lib",
     "/boot",
+    "/proc",     // prevent agent from reading /proc/self/environ for API keys
 ];
 
 // Exec allowlist — the only binaries agent can run via exec.
@@ -59,3 +60,89 @@ pub const PROTECTED_DIRS: &[&str] = &[
 pub const EXEC_ALLOWLIST: &[&str] = &[
     "cargo",
 ];
+
+/// Normalize a path for security comparison: resolve .., collapse //, lowercase.
+/// Does NOT access the filesystem — purely lexical normalization.
+pub fn normalize_path(path: &str) -> String {
+    let mut components: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => continue,  // skip empty (from //) and .
+            ".." => { let _ = components.pop(); }
+            _ => components.push(part),
+        }
+    }
+    if components.is_empty() {
+        return "/".to_string();
+    }
+    let mut result = String::from("/");
+    for (i, c) in components.iter().enumerate() {
+        if i > 0 { result.push('/'); }
+        result.push_str(c);
+    }
+    result
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_double_slash() {
+        assert_eq!(normalize_path("//etc/passwd"), "/etc/passwd");
+    }
+    #[test]
+    fn test_normalize_dotdot() {
+        assert_eq!(normalize_path("/tmp/../../etc/passwd"), "/etc/passwd");
+    }
+    #[test]
+    fn test_normalize_dot() {
+        assert_eq!(normalize_path("/./etc/./passwd"), "/etc/passwd");
+    }
+    #[test]
+    fn test_normalize_mixed() {
+        assert_eq!(normalize_path("/tmp/../tmp/./../etc/passwd"), "/etc/passwd");
+    }
+    #[test]
+    fn test_is_protected_etc() {
+        assert!(is_protected_path("/etc/passwd"));
+    }
+    #[test]
+    fn test_is_protected_etc_traversal() {
+        assert!(is_protected_path("/tmp/../../etc/passwd"));
+    }
+    #[test]
+    fn test_is_protected_double_slash() {
+        assert!(is_protected_path("//etc/passwd"));
+    }
+    #[test]
+    fn test_is_protected_uppercase() {
+        assert!(is_protected_path("/ETC/passwd"));
+    }
+    #[test]
+    fn test_is_protected_mixed_case() {
+        assert!(is_protected_path("/eTc/PaSsWd"));
+    }
+    #[test]
+    fn test_is_not_protected_tmp() {
+        assert!(!is_protected_path("/tmp/safe.txt"));
+    }
+    #[test]
+    fn test_is_not_protected_var() {
+        assert!(!is_protected_path("/var/boos/results/out"));
+    }
+}
+
+/// Check if a path is under a protected directory.
+/// Uses normalize_path for safe comparison.
+pub fn is_protected_path(path: &str) -> bool {
+    let normalized = normalize_path(path);
+    let lower = normalized.to_lowercase();
+    for dir in PROTECTED_DIRS {
+        let dirl = dir.to_lowercase();
+        if lower.starts_with(&dirl) && (lower.len() == dirl.len() || lower.as_bytes()[dirl.len()] == b'/') {
+            return true;
+        }
+    }
+    false
+}
