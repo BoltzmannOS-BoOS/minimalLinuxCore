@@ -330,12 +330,18 @@ fn rotate_logs_cmd() -> i32 {
 
 /// Check if an enable flag is set, print denial if not.
 /// Returns true if allowed.
+/// Checks IMMUTABLE_DENY (compiled-in) first, then the capabilities file.
 fn check_enabled(flag: &str, name: &str) -> bool {
+    // Hardcoded denial — file cannot override
+    if config::IMMUTABLE_DENY.contains(&flag) {
+        println!("Permission denied: '{}' is immutable (compiled-in restriction)", name);
+        log::log_denied(name);
+        return false;
+    }
     if registry::is_enabled(flag) {
         return true;
     }
     println!("Permission denied: missing capability '{}'", name);
-    // Use the enable_flag key for the log as-is (allow_*)
     log::log_denied(name);
     false
 }
