@@ -448,9 +448,11 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             }
             let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
             let cmd = parts[0];
-            // BIOS: only allow safe binaries from the allowlist
-            if !config::EXEC_ALLOWLIST.contains(&cmd) {
-                eprintln!("exec: '{}' is not in the exec allowlist (BIOS restriction)", cmd);
+            // BIOS: check full command against allowlist prefixes
+            let full_cmd = args_trimmed;
+            let allowed = config::EXEC_ALLOWLIST.iter().any(|prefix| full_cmd.starts_with(prefix));
+            if !allowed {
+                eprintln!("exec: '{}' is not in the exec allowlist (BIOS restriction)", full_cmd);
                 return EXIT_DENIED;
             }
             let cmd_args = &parts[1..];

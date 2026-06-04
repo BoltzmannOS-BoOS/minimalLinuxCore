@@ -55,10 +55,12 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/proc",     // prevent agent from reading /proc/self/environ for API keys
 ];
 
-// Exec allowlist — the only binaries agent can run via exec.
-// cargo covers the develop loop (build/test). Nothing else needed.
+// Exec allowlist — check full command prefix, not just binary name.
+// "cargo build" matches "cargo build --release" but NOT "cargo run".
 pub const EXEC_ALLOWLIST: &[&str] = &[
-    "cargo",
+    "cargo build",
+    "cargo test",
+    "cargo --version",
 ];
 
 /// Normalize a path for security comparison: resolve .., collapse //, lowercase.

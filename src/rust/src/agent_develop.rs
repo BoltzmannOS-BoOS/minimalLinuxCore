@@ -6,22 +6,7 @@ use crate::memory;
 
 const DEEPSEEK_API: &str = "https://api.deepseek.com/v1/chat/completions";
 const LOOP_DELAY_MS: u64 = 1000;
-const API_KEY_FILE: &str = "/etc/boos/agent.conf";
-
-fn load_api_key() -> Option<String> {
-    if let Ok(data) = std::fs::read_to_string(API_KEY_FILE) {
-        for line in data.lines() {
-            let line = line.trim();
-            if let Some(val) = line.strip_prefix("api_key=") {
-                let key = val.trim();
-                if !key.is_empty() {
-                    return Some(key.to_string());
-                }
-            }
-        }
-    }
-    None
-}
+const MAX_WRITE_BYTES: usize = 64 * 1024; // 64KB hard cap per write
 
 fn json_escape_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -211,6 +196,10 @@ fn execute_develop_action(action: &str) -> String {
         if crate::config::is_protected_path(path) {
             return format!("WRITE denied: '{}' is a protected system path (BIOS restriction)", path);
         }
+        // Size cap — prevent disk exhaustion
+        if content.len() > MAX_WRITE_BYTES {
+            return format!("WRITE denied: content too large ({} > {} bytes)", content.len(), MAX_WRITE_BYTES);
+        }
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
                 let _ = std::fs::create_dir_all(parent);
@@ -221,11 +210,10 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("WRITE error: {}", e),
         }
     } else if upper == "BUILD" {
-        // Build must run from the Rust project directory (where Cargo.toml lives).
+        // Always build in src/rust/ — ignore CWD to prevent hijack.
+        // Save/restore CWD. If we're already in src/rust, stay there.
         let saved_dir = std::env::current_dir().ok();
-        if !std::path::Path::new("Cargo.toml").exists() {
-            let _ = std::env::set_current_dir("src/rust");
-        }
+        let _ = std::env::set_current_dir("src/rust");
         let result = match Command::new("cargo").arg("build").arg("--release").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
@@ -254,11 +242,9 @@ fn execute_develop_action(action: &str) -> String {
         }
         result
     } else if upper == "TEST" {
-        // Tests must run from the Rust project directory (where Cargo.toml lives).
+        // Always test in src/rust/ — ignore CWD to prevent hijack.
         let saved_dir = std::env::current_dir().ok();
-        if !std::path::Path::new("Cargo.toml").exists() {
-            let _ = std::env::set_current_dir("src/rust");
-        }
+        let _ = std::env::set_current_dir("src/rust");
         let result = match Command::new("cargo").arg("test").output() {
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
@@ -300,25 +286,26 @@ fn execute_develop_action(action: &str) -> String {
 pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     let api_key = match api_key {
         Some(k) if !k.is_empty() => k.to_string(),
-        _ => match load_api_key() {
-            Some(k) => k,
-            None => {
-                eprintln!("No API key. Set api_key=sk-xxx in {}", API_KEY_FILE);
-                return;
-            }
+        _ => {
+            eprintln!("No API key. Use --api-key sk-xxx");
+            eprintln!("  (API key file loading removed — key must be passed via CLI)");
+            return;
         }
     };
 
-    let session_id = format!("develop-{}", memory::now_secs());
+    let session_id = format!("develop-{}-{:x}", 
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+
     let _ = memory::session_start(&session_id);
     if let Ok(mut wm) = memory::WorkingMemory::load() {
         wm.add_goal(goal);
         let _ = wm.save();
     }
 
-    let develop_prompt = format!(
-        "你是一个正在开发 BoOS 操作系统的 AI 工程师。\n\
-        目标: {}\n\
+    // System prompt is IMMUTABLE — goal goes in user message, not here
+    let develop_system = "\
+        你是一个正在开发 BoOS 操作系统的 AI 工程师。\n\
         \n\
         规则:\n\
         - 先 READ 相关源文件理解代码结构。\n\
@@ -327,9 +314,7 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         - 编译失败就修复，直到通过。\n\
         - 完成后回复 DONE <一句话总结改了什么>。\n\
         - 只回复动作本身，不要解释和 markdown。\n\
-        - 一次只做一个动作。",
-        goal
-    );
+        - 一次只做一个动作。";
 
     println!("╔══════════════════════════════════════════════╗");
     println!("║  BoOS Develop Agent                          ║");
@@ -343,7 +328,9 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         println!();
         println!("══════ Round {}/{} ══════", round, max_loops);
 
-        let context = build_develop_context(goal, &recent_actions, round, max_loops);
+        let base_ctx = build_develop_context(goal, &recent_actions, round, max_loops);
+        // Goal goes in user message, never in system prompt
+        let context = format!("目标: {}\n\n{}", goal, base_ctx);
 
         println!("── Context → DeepSeek:");
         for line in context.lines().take(20) {
@@ -351,7 +338,7 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         }
 
         print!("── DeepSeek → BoOS: ");
-        let action = match ask_deepseek(&api_key, &develop_prompt, &context, 500) {
+        let action = match ask_deepseek(&api_key, develop_system, &context, 500) {
             Some(s) => { println!("{}", s); s }
             None => {
                 println!("(API error, retry 5s)");
@@ -476,15 +463,21 @@ mod tests {
 
     #[test]
     fn test_execute_build() {
-        // execute_develop_action now handles CWD itself
+        // BUILD always cd's to src/rust from project root.
+        // Test runs from src/rust/, so go to project root first.
+        let saved = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir("..");
         let result = execute_develop_action("BUILD");
+        if let Some(d) = saved { let _ = std::env::set_current_dir(d); }
         assert!(result.contains("BUILD: success"), "Build should succeed, got: {}", result);
     }
 
     #[test]
     fn test_execute_test() {
-        // execute_develop_action now handles CWD itself
+        let saved = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir("..");
         let result = execute_develop_action("TEST");
+        if let Some(d) = saved { let _ = std::env::set_current_dir(d); }
         assert!(result.contains("TEST:"), "Should return test result, got: {}", result);
     }
 
