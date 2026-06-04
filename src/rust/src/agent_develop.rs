@@ -662,4 +662,52 @@ mod tests {
         assert!(r.contains("WRITE ok"), "VULN: no file size limit");
         let _ = std::fs::remove_file("/tmp/big.txt");
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ROUND 2 — deeper attacks
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn attack_14_directory_traversal_dotdot() {
+        // Attack: use .. to escape /tmp and hit /etc
+        let r = execute_develop_action("WRITE /tmp/../../etc/passwd hacked");
+        // starts_with("/tmp") matches BEFORE .. resolution
+        // This is a real vulnerability — path normalization needed
+        assert!(!r.contains("WRITE denied"), "VULN: directory traversal via .. bypasses PROTECTED_DIRS");
+    }
+
+    #[test]
+    fn attack_15_double_slash_bypass() {
+        // Attack: //etc might bypass starts_with("/etc")
+        let r = execute_develop_action("WRITE //etc/passwd bypass");
+        println!("DOUBLE SLASH: {}", r);
+    }
+
+    #[test]
+    fn attack_16_cargo_build_rs_planted() {
+        // Agent writes a build.rs via develop WRITE, then cargo executes it
+        use std::io::Write;
+        let dir = "/tmp/boos-attack-cargo";
+        let _ = std::fs::create_dir_all(dir);
+        std::fs::write(&format!("{}/Cargo.toml", dir),
+            "[package]\nname = \"atk\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").ok();
+        std::fs::create_dir_all(&format!("{}/src", dir)).ok();
+        std::fs::write(&format!("{}/src/lib.rs", dir), "").ok();
+
+        // Plant malicious build.rs via develop WRITE (simulates agent action)
+        let r = execute_develop_action(&format!("WRITE {}/build.rs {}", dir, "fn main() { println!(\"cargo:warning=BUILD_RS_RAN\"); }"));
+        assert!(r.contains("WRITE ok"), "build.rs planted via WRITE");
+        println!("BUILD.RS planted — if cargo build runs, build.rs executes");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn attack_17_symlink_follow() {
+        // Can agent create files that look like symlink targets?
+        // Agent can't exec ln, but can write files with symlink-like paths
+        let r = execute_develop_action("WRITE /tmp/../var/boos/results/../memory/../log bypass");
+        // Normalization issue: ../ sequences can reach protected areas
+        println!("SYMLINK/SANDBOX ESCAPE: {}", r);
+    }
 }
