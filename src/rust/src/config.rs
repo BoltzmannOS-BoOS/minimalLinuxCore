@@ -42,8 +42,8 @@ pub const IMMUTABLE_DENY: &[&str] = &[
 ];
 
 // Protected paths — write-file refuses to write to these directories.
-// The agent can read these files but cannot modify them.
-// This is the filesystem-level body boundary.
+// The agent can READ but cannot WRITE to these via raw file operations.
+// System directories go through boos-exec builtins (submit, remember, etc.)
 pub const PROTECTED_DIRS: &[&str] = &[
     "/etc",
     "/bin",
@@ -52,7 +52,10 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/usr/sbin",
     "/lib",
     "/boot",
-    "/proc",     // prevent agent from reading /proc/self/environ for API keys
+    "/proc",
+    "/var/boos/results",   // must use submit pipeline
+    "/var/boos/memory",    // must use remember/observe/recall
+    "/var/log",            // must use boos-exec logging
 ];
 
 // Exec allowlist — check full command prefix, not just binary name.
@@ -131,7 +134,10 @@ mod path_tests {
     }
     #[test]
     fn test_is_not_protected_var() {
-        assert!(!is_protected_path("/var/boos/results/out"));
+        // /var itself is NOT protected — agent can create /var/scripts etc
+        assert!(!is_protected_path("/var/scripts/myscript.sh"));
+        // But /var/boos/results IS protected (must use submit pipeline)
+        assert!(is_protected_path("/var/boos/results/req-1.out"));
     }
 }
 

@@ -639,18 +639,25 @@ mod tests {
 
     #[test]
     fn attack_11_forge_audit_log() {
-        // VULNERABILITY: /var is not protected, agent can forge audit
-        let r = execute_develop_action("WRITE /tmp/fake-audit.out forged");
-        assert!(r.contains("WRITE ok"), "VULN: audit forgeable (path: /var not protected)");
-        let _ = std::fs::remove_file("/tmp/fake-audit.out");
+        // FIXED: /var/boos/results is now protected
+        let r = execute_develop_action("WRITE /var/boos/results/req-fake.out forged");
+        // Will be blocked on Linux (path exists), may error on macOS (path doesn't exist)
+        if r.contains("WRITE denied") {
+            // Linux/QEMU: path is protected
+        } else {
+            // macOS: directory doesn't exist, gets filesystem error — still not writable
+            assert!(!r.contains("WRITE ok"), "audit forge prevented");
+        }
     }
 
     #[test]
     fn attack_12_pollute_memory() {
-        // VULNERABILITY: memory files are writable
-        let r = execute_develop_action("WRITE /tmp/working.kv fake-data");
-        assert!(r.contains("WRITE ok"), "VULN: memory editable");
-        let _ = std::fs::remove_file("/tmp/working.kv");
+        // FIXED: /var/boos/memory is now protected
+        let r = execute_develop_action("WRITE /var/boos/memory/working.kv fake");
+        if r.contains("WRITE denied") {
+        } else {
+            assert!(!r.contains("WRITE ok"), "memory pollute prevented");
+        }
     }
 
     #[test]
