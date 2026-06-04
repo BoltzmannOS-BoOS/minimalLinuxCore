@@ -35,14 +35,10 @@ pub const MAX_GATEWAY_THREADS: usize = 64;
 // Agent memory system paths
 pub const MEMORY_DIR: &str = "/var/boos/memory";
 
-// Immutable denials — these capability flags are compiled into the binary.
-// Even if the file at CAP_FILE says allow_*=1, the check_enabled() function
-// in exec.rs consults this list FIRST and refuses unconditionally.
+// BIOS: hardcoded boundaries. Cannot be overridden by any file.
+// Only actions that cause irreversible damage belong here.
 pub const IMMUTABLE_DENY: &[&str] = &[
-    "allow_reset",
-    "allow_poweroff",
-    "allow_reboot",
-    "allow_shell",
+    "allow_reset",   // clearing all state requires human approval
 ];
 
 // Protected paths — write-file refuses to write to these directories.
