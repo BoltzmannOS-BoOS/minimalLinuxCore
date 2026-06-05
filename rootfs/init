@@ -39,12 +39,5 @@ if [ -f /etc/boos/agent.conf ]; then
     echo "[init] agent.conf protected (owner: boos-gateway, mode: 400)"
 fi
 
-echo "[init] testing boos-exec..."
-echo "PRE" 
-/bin/boos-exec help &
-PID=$!
-sleep 2
-kill $PID 2>/dev/null
-echo "POST pid=$PID"
 echo "[init] starting boos-supervisor..."
 exec /bin/boos-supervisor
