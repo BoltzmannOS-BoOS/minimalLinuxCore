@@ -92,18 +92,41 @@ audit recent / failures / session / summary → agent 理解历史
 - Write 大小限制（64KB cap）
 - API key 隔离（--api-key only，移除文件读取）
 
-### Phase 7: Split-Brain Architecture（规划中）
+### Phase 7: Split-Brain Architecture（已实现）
 
 ```
 左脑（agent/cargo）      右脑（gateway/key）
 可生长、可重置            出厂焊死、不可变
-        └── 胼胝体（submit/result 协议）──┘
+        └── 胼胝体（submit/result + DEEPSEEK 协议）──┘
 ```
+验证：gateway 代理 DeepSeek API, agent 进程无 key 文件访问权限。
 
-### Phase 8: Seed Self-Reference（本文件）
+### Phase 8: Security Hardening — Attack→Defend Cycles（已完成 70 轮）
 
 ```
-BoOS 的开发过程本身成为 Seed → 每一轮攻击/防御都是 Refinement Log 的一行
+70 次攻击 → 7 层防御 → 132 测试验证
+```
+关键里程碑：
+- 路径规范化（normalize_path）
+- exec 白名单（cargo build/test only）
+- Prompt injection 防御（goal → user message）
+- API key 隔离（--api-key only + gateway proxy）
+- CWD hijack 防御（Cargo.toml 身份验证）
+- CBSE 防御（Cargo.toml + build.rs hash）
+- Write size cap（64KB）
+- PROTECTED_DIRS 扩展（11 路径）
+
+### Phase 9: QEMU Integration（已完成）
+
+```
+Docker cross-compile → x86_64 musl binary → initramfs → QEMU boot
+```
+验证：Alpine 6.12 内核, e1000 网络, TCP 5555 可达, supervisor + processor 运行。
+
+### Phase 10: Seed Self-Reference（本文档 — 持续更新）
+
+```
+BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinement Log 的一行
 ```
 
 ---
@@ -189,6 +212,25 @@ BoOS 的开发过程本身成为 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.2.9 | agent: 攻击套件 125 tests | Verification | 攻击→防御→测试闭环 |
 | v0.2.10 | 用户: "裂脑设计" | Architecture | 左右脑物理隔离 + 胼胝体协议 |
 | v0.3.0 | 用户: "用 SEED 记录开发流程" | Meta | 本文档 — 种子自我指涉 |
+| v0.3.1 | 攻击: build.rs 修改→BUILD 执行 | Security | build.rs 加入 hash 快照 |
+| v0.3.2 | 研究: Cymulate CBSE (2026) | Architecture | Cargo.toml hash 验证 |
+| v0.3.3 | 攻击: 目录穿越 .. // /// 大小写 | Security | normalize_path() + is_protected_path() |
+| v0.3.4 | 攻击: exec cargo run 执行任意代码 | Security | exec 检查完整命令前缀 |
+| v0.3.5 | 攻击: goal 注入 system prompt | Security | goal 移到 user message |
+| v0.3.6 | 攻击: session ID 可预测 | Security | pid+nanos 替代 timestamp |
+| v0.3.7 | 攻击: 100KB write DOS | Security | MAX_WRITE_BYTES = 64KB |
+| v0.3.8 | 攻击: API key 文件可读 | Security | 移除 load_api_key() |
+| v0.3.9 | 攻击: CWD hijack | Security | Cargo.toml name="boos" 验证 |
+| v0.3.10 | 攻击: 审计伪造 /var/boos/results | Security | PROTECTED_DIRS 扩展 |
+| v0.4.0 | 实现: 软件裂脑 | Architecture | gateway 代理 DeepSeek, agent 无 key |
+| v0.4.1 | 实现: QEMU 集成测试 | Verification | Alpine 6.12 内核, e1000 网络, TCP 可达 |
+| v0.4.2 | 实现: 用户隔离 | Architecture | boos-gateway/boos-agent 用户 + chmod 400 |
+| v0.4.3 | 研究: CBSE 攻击模式 | Security | Cargo.toml + build.rs hash 双重验证 |
+| v0.4.4 | 攻击套件: 70 attacks | Verification | 7 层防御覆盖, 4 残存漏洞 |
+| v0.4.5 | 用户: "裂脑电脑" 命名 | Architecture | 左右脑物理隔离 + 胼胝体协议 |
+| v0.4.6 | 用户: "BIOS 层只兜底不可逆破坏" | Principle | IMMUTABLE_DENY 只保留 reset |
+| v0.4.7 | agent: 132 单元测试 + 攻击套件 | Verification | 攻击→防御→测试闭环 |
+| v0.4.8 | agent: Docker x86_64 musl 交叉编译 | Growth | --platform linux/amd64 工具链 |
 
 ### 元原则
 
