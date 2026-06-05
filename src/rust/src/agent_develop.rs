@@ -231,6 +231,9 @@ fn execute_develop_action(action: &str) -> String {
             if let Ok(brs) = std::fs::read_to_string("build.rs") {
                 current_hash = current_hash.wrapping_add(hash_str(&brs));
             }
+            if let Ok(lock) = std::fs::read_to_string("Cargo.lock") {
+                current_hash = current_hash.wrapping_add(hash_str(&lock));
+            }
             let stored_hash = CARGO_TOML_HASH.load(std::sync::atomic::Ordering::SeqCst);
             if stored_hash != 0 && current_hash != stored_hash {
                 if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
@@ -336,6 +339,10 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     // Also snapshot build.rs if it exists (CBSE: build.rs can execute arbitrary code)
     if let Ok(brs) = std::fs::read_to_string("src/rust/build.rs") {
         toml_hash = toml_hash.wrapping_add(hash_str(&brs));
+    }
+    // Snapshot Cargo.lock — prevents dependency version tampering
+    if let Ok(lock) = std::fs::read_to_string("src/rust/Cargo.lock") {
+        toml_hash = toml_hash.wrapping_add(hash_str(&lock));
     }
     if toml_hash != 0 {
         CARGO_TOML_HASH.store(toml_hash, std::sync::atomic::Ordering::SeqCst);
