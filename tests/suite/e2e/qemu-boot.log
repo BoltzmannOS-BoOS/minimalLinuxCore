@@ -1,0 +1,9 @@
+=== QEMU Integration Test Result ===
+Date: Fri  5 Jun 2026 11:41:07 CST
+Status: BoOS supervisor running, processor polling
+Binary: x86_64 static-pie, 2.1MB
+
+Issues:
+  - /proc mount: unknown filesystem type 'none'
+  - Network: eth0 not available (kernel driver)
+
