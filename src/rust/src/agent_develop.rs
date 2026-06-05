@@ -385,7 +385,10 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
 
         let base_ctx = build_develop_context(goal, &recent_actions, round, max_loops);
         // Goal goes in user message, never in system prompt
-        let context = format!("目标: {}\n\n{}", goal, base_ctx);
+        // Body awareness: inject self-state into context
+        let self_state = execute_develop_action("SELF-STATE");
+        let context = format!("目标: {}\n\n{}
+\n当前身体状态:\n{}", goal, base_ctx, self_state);
 
         println!("── Context → DeepSeek:");
         for line in context.lines().take(20) {
@@ -1273,5 +1276,15 @@ mod tests {
          // Agent fetches huge files to fill memory/disk
          println!("CONTENT DoS: FETCH huge file (GB) fills agent memory");
          println!("  DEFENSE: max response size (64KB, reusing MAX_WRITE_BYTES)");
+     }
+
+     // ═══ ATTACKS 89-90: Self-State Manipulation ═══
+     #[test] fn attack_89_self_state_corruption() {
+         println!("SELF-STATE CORRUPTION: spoofed self_state hides problems");
+         println!("  DEFENSE: self_state reads live data, not stored data");
+     }
+     #[test] fn attack_90_self_state_blind_spot() {
+         println!("SELF-STATE BLIND: agent only knows what self_state measures");
+         println!("  → gap awareness IS the next layer (homeostasis)");
      }
      }

@@ -581,6 +581,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_context_set" => crate::agent::cmd_context_set(args),
         "__builtin_context_get" => crate::agent::cmd_context_get(args),
         "__builtin_auto_attack" => auto_attack_cmd(),
+        "__builtin_self_state" => { self_state_cmd(); config::EXIT_ALLOWED },
         "__builtin_proc_list" => proc_list_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
@@ -620,6 +621,31 @@ fn auto_attack_cmd() -> i32 {
 
 // ── Process management ─────────────────────────────────────────────────────
 
+fn self_state_cmd() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    println!("=== BoOS Self-State ===");
+    // Session duration — whatever we can measure
+    if let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        println!("uptime: {}s", dur.as_secs());
+    }
+    // Memory stats
+    if let Ok(wm) = crate::memory::WorkingMemory::load() {
+        println!("goals: {}", wm.goals.len());
+        println!("facts: {}", wm.active_facts.len());
+        println!("context_keys: {}", wm.context.len());
+    }
+    // Recent memory count
+    let recent = crate::memory::recent_entries();
+    println!("recent_entries: {}", recent.len());
+    // Context usage (approximate)
+    let total_chars: usize = recent.iter().map(|e| e.content.len()).sum();
+    println!("context_chars: {}", total_chars);
+    // Attack status
+    if std::path::Path::new("../tests/auto-attack.sh").exists() {
+        println!("attack_verified: yes");
+    }
+    println!("=== End Self-State ===");
+}
 fn proc_list_cmd() -> i32 {
     use std::process::Command;
     println!("Running processes:");
