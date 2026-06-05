@@ -291,7 +291,8 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.6.6 | 攻击: 82-85 — symlink, TOCTOU, test exfil, repeat bypass | Verification | 1 fixed, 4 accepted, marginal ROI confirms stop |
 | v0.7.0 | Layer 3: Attack Composition Engine | Growth | 7 primitives + 4 operators → 60 composed attacks, 自动变异 |
 | v0.7.1 | Attack Evolution Engine (自进化) | Growth | 48 compositions tested, 0 OPEN, 7 layers hold across all chains |
-| v0.7.2 | 用户纠正: "proc-spawn 是 sysadmin 不是 AI" | Correction | 回退 proc-spawn。AI 要服务级接口，不管理 PID/进程/fork。哲学是底线。 |
+| v0.7.2 | 用户纠正: "proc-spawn 是 sysadmin 不是 AI" | Correction | 回退 proc-spawn。原则23：AI 要服务，不要 syscall。 |
+| v0.7.3 | Layer 3 整合: 进化引擎入 auto-attack | Growth | 每次攻击测试自动运行进化，知识库持续生长 |
 
 ### 元原则
 
