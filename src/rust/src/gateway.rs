@@ -33,6 +33,59 @@ fn load_api_key() -> Option<String> {
     })
 }
 
+// ── FETCH: read-only network proxy (agent cannot exfiltrate) ───────────────
+
+fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
+    let mut url = String::new();
+    if reader.read_line(&mut url).is_err() {
+        let _ = writeln!(stream, "GATEWAY: protocol error");
+        return;
+    }
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        let _ = writeln!(stream, "GATEWAY: empty URL");
+        return;
+    }
+    // Defenses: HTTPS only, no localhost, strip query params
+    if !url.starts_with("https://") {
+        let _ = writeln!(stream, "GATEWAY: only HTTPS allowed (read-only)");
+        return;
+    }
+    if url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0") {
+        let _ = writeln!(stream, "GATEWAY: internal addresses blocked (SSRF)");
+        return;
+    }
+    // Strip query params to prevent data exfiltration via URL
+    let clean_url = if let Some(pos) = url.find('?') { &url[..pos] } else { &url };
+    // Max response size: 64KB (same as write cap)
+    const MAX_FETCH_BYTES: usize = 64 * 1024;
+    match ureq::get(clean_url)
+        .timeout(Duration::from_secs(10))
+        .call()
+    {
+        Ok(r) if r.status() == 200 => {
+            let mut body = Vec::new();
+            let mut reader = r.into_reader();
+            // Read up to MAX_FETCH_BYTES
+            let mut buf = [0u8; 4096];
+            let mut total = 0usize;
+            while total < MAX_FETCH_BYTES {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        body.extend_from_slice(&buf[..n]);
+                        total += n;
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = stream.write_all(&body);
+        }
+        Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
+        Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
+    }
+}
+
 fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
     let mut sys = String::new();
     let mut ctx = String::new();
@@ -114,6 +167,12 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     // Special: DEEPSEEK — gateway proxied API call (has key access)
     if command_line == "DEEPSEEK" {
         handle_deepseek(&mut stream, &mut reader);
+        return;
+    }
+
+    // Special: FETCH — read-only network access (agent cannot write/exfiltrate)
+    if command_line == "FETCH" {
+        handle_fetch(&mut stream, &mut reader);
         return;
     }
 

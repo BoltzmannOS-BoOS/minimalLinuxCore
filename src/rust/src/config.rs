@@ -38,7 +38,8 @@ pub const MEMORY_DIR: &str = "/var/boos/memory";
 // BIOS: hardcoded boundaries. Cannot be overridden by any file.
 // Only actions that cause irreversible damage belong here.
 pub const IMMUTABLE_DENY: &[&str] = &[
-    "allow_reset",   // clearing all state requires human approval
+    "allow_reset",       // clearing all state is irreversible
+    "allow_net_write",   // agent cannot exfiltrate data via network
 ];
 
 // Protected paths — write-file refuses to write to these directories.
