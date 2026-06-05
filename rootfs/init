@@ -1,8 +1,10 @@
 #!/bin/sh
 
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
+mkdir -p /proc /sys /dev
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
 
 # Mount persistent /var disk (ext2 on virtio)
 echo "[init] mounting persistent /var..."
