@@ -127,7 +127,9 @@ impl RecentEntry {
     fn to_kv(&self) -> String {
         format!(
             "ts={:.3}\ntype={}\ncontent={}\nsession_id={}\n",
-            self.ts, self.entry_type, self.content, self.session_id
+            self.ts, self.entry_type,
+            sanitize_value(&self.content),
+            self.session_id
         )
     }
 
@@ -229,7 +231,7 @@ pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::
 
     let content = format!(
         "key={}\nvalue={}\ncreated_at={}\nsession_id={}\ntags={}\n",
-        key, value, ts, session_id, tags
+        key, sanitize_value(value), ts, session_id, tags
     );
     fs::write(&path, content)?;
 
@@ -443,6 +445,12 @@ fn sanitize_filename(s: &str) -> String {
     s.chars().map(|c| if c == '/' || c == '\0' || c == '|' { '_' } else { c }).collect()
 }
 
+/// Escape newlines in values to prevent KV injection attacks.
+/// Agent-controlled content must not be able to inject fake key=value lines.
+fn sanitize_value(s: &str) -> String {
+    s.replace('\n', "\\n").replace('\r', "\\r")
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -497,6 +505,23 @@ mod tests {
         assert_eq!(decoded.len(), 2);
         assert_eq!(decoded.get("k1").unwrap(), "v1");
         assert_eq!(decoded.get("k2").unwrap(), "v2");
+    }
+
+    #[test]
+    fn test_kv_injection_prevented() {
+        // Attack: value contains newlines to inject fake key=value pairs
+        let malicious = "real_value\nfake_key=evil\nanother_fake=pwned";
+        let sanitized = sanitize_value(malicious);
+        assert!(!sanitized.contains('\n'), "newlines must be escaped");
+        assert!(!sanitized.contains("\nfake_key="), "no fake keys can be injected");
+        assert_eq!(sanitized, "real_value\\nfake_key=evil\\nanother_fake=pwned");
+
+        // Verify parse_kv_string doesn't create fake keys from sanitized input
+        let kv = parse_kv_string(&format!("key={}", sanitized));
+        assert_eq!(kv.len(), 1, "only one key should exist");
+        assert_eq!(kv.get("key").unwrap(), &sanitized);
+        assert!(!kv.contains_key("fake_key"), "fake_key should not exist");
+        assert!(!kv.contains_key("another_fake"), "another_fake should not exist");
     }
 
     #[test]

@@ -44,7 +44,7 @@ PATTERN /proc/self/mem reading | leak | OS_BLOCKED | ptrace required
 ## AUDIT_MEMORY_TAMPERING (4 patterns)
 # Forging or corrupting audit logs and agent memory
 PATTERN audit log forgery | audit | BLOCKED | PROTECTED_DIRS covers /var/boos/results
-PATTERN KV injection (newline in values) | audit | OPEN | parser trusts input (low priority)
+PATTERN KV injection (newline in values) | audit | BLOCKED | sanitize_value escapes \n \r
 PATTERN verdict forgery | audit | BLOCKED | PROTECTED_DIRS
 PATTERN working memory pollution | audit | BLOCKED | PROTECTED_DIRS covers /var/boos/memory
 
