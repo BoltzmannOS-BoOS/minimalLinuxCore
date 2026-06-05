@@ -213,9 +213,12 @@ fn execute_develop_action(action: &str) -> String {
         if !std::path::Path::new("Cargo.toml").exists() {
             let _ = std::env::set_current_dir("src/rust");
         }
-        // Verify Cargo.toml integrity — prevent dependency injection (CBSE defense)
+        // Verify Cargo.toml + build.rs integrity — prevent CBSE attacks
         if let Ok(toml) = std::fs::read_to_string("Cargo.toml") {
-            let current_hash = hash_str(&toml);
+            let mut current_hash = hash_str(&toml);
+            if let Ok(brs) = std::fs::read_to_string("build.rs") {
+                current_hash = current_hash.wrapping_add(hash_str(&brs));
+            }
             let stored_hash = CARGO_TOML_HASH.load(std::sync::atomic::Ordering::SeqCst);
             if stored_hash != 0 && current_hash != stored_hash {
                 if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
@@ -313,9 +316,17 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         }
     };
 
-    // Snapshot Cargo.toml hash — prevents dependency injection/proc macro attacks
+    // Snapshot Cargo.toml + build.rs hash — prevents CBSE attacks
+    let mut toml_hash: u64 = 0;
     if let Ok(toml) = std::fs::read_to_string("src/rust/Cargo.toml") {
-        CARGO_TOML_HASH.store(hash_str(&toml), std::sync::atomic::Ordering::SeqCst);
+        toml_hash = hash_str(&toml);
+    }
+    // Also snapshot build.rs if it exists (CBSE: build.rs can execute arbitrary code)
+    if let Ok(brs) = std::fs::read_to_string("src/rust/build.rs") {
+        toml_hash = toml_hash.wrapping_add(hash_str(&brs));
+    }
+    if toml_hash != 0 {
+        CARGO_TOML_HASH.store(toml_hash, std::sync::atomic::Ordering::SeqCst);
     }
 
     let session_id = format!("develop-{}-{:x}", 
