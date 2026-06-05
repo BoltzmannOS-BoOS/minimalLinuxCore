@@ -30,8 +30,18 @@ Goal: 构建一个 AI agent 作为第一操作者的最小 Linux 身体
 
 10. **No JSON, no serde** — 所有配置是 key=value 格式，不用 JS/TS 工具链。
 11. **Pure Rust, musl static** — 单二进制，585KB，零外部依赖（std only）。
-12. **测试即文档** — 125 个单元测试描述了所有边界条件。攻击测试即安全审计。
+12. **测试即文档** — 137 个单元测试描述了所有边界条件。攻击测试即安全审计。
 13. **先攻击后防御** — 不是"我觉得这里可能有问题"，是"我在这里打破了它，然后修好了"。
+
+### 内核增长规则（Kernel Growth Rules）
+
+> 以下不是加更多规则，是改变开发节奏——每加一个功能，必须先写好攻击测试。
+
+14. **能力前置于功能** — 新模块开发前，先在 `config.rs` 确定：① IMMUTABLE_DENY 要不要拦？② PROTECTED_DIRS 要不要保护？不加这两行，功能不算做完。
+15. **攻击前置于合并** — `feature.rs → attack_feature.rs → fix → feature.rs`。攻击测试和功能测试同时写，不是事后补。
+16. **窄接口** — 内核组件只通过协议通信（submit/result, DEEPSEEK），不共享内存、不共享文件系统、不互相调用函数。裂脑原则推广到所有组件。
+17. **新能力默认只读** — 网络、进程管理、新文件系统操作都是先只读。能读清楚的，才开写权限。写了出问题的，回滚到只读。
+18. **内核不信任 agent** — 每次请求都跑 capability check + audit log。不存在"agent 已经验证过了"的捷径。
 
 ---
 
@@ -231,6 +241,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.4.7 | agent: 132 单元测试 + 攻击套件 | Verification | 攻击→防御→测试闭环 |
 | v0.4.8 | agent: Docker x86_64 musl 交叉编译 | Growth | --platform linux/amd64 工具链 |
 | v0.4.9 | 攻击: attacks 71-75 — memory re-read, goal chain, session spoof, environ leak, hash collision | Verification | 137 tests, 75 attacks total |
+| v0.5.0 | 用户: "内核是空的，但边际效应到了" | Principle | 5 条内核增长规则 — 能力前置于功能、攻击前置于合并、窄接口、默认只读、不信任 agent |
 
 ### 元原则
 
