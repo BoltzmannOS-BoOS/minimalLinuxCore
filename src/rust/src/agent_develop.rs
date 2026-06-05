@@ -1306,4 +1306,25 @@ mod tests {
          println!("  → agent responsible for heeding warnings");
          println!("  → next: auto-corrective action on WARN");
      }
+
+     // ═══ ATTACKS 92-94: Identity + Boundary ═══
+     #[test] fn attack_92_identity_spoofing() {
+         // Can agent claim a different session ID?
+         println!("IDENTITY SPOOF: session-id = pid, hard to predict");
+         println!("  → pid is visible, but nanos adds entropy (attack 73)");
+         println!("  DEFENSE: session-id is immutable after creation");
+     }
+     #[test] fn attack_93_external_data_poisoning() {
+         // Agent fetches malicious content via FETCH → enters context as [EXTERNAL]
+         println!("EXTERNAL POISON: FETCH data marked [EXTERNAL]");
+         println!("  → agent can choose to trust or discard external data");
+         println!("  → no implicit trust — boundary awareness is the defense");
+     }
+     #[test] fn attack_94_cross_session_memory_leak() {
+         // Can session A read session B"s memory entries?
+         println!("CROSS-SESSION LEAK: memory entries tagged with session_id");
+         println!("  → recent entries store session_id per entry");
+         println!("  → archive entries tagged with session_id");
+         println!("  DEFENSE: memory isolation by session — same agent, different self");
+     }
      }

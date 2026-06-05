@@ -79,6 +79,8 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
                     Err(_) => break,
                 }
             }
+            let tag = b"[EXTERNAL] ";
+            let _ = stream.write_all(tag);
             let _ = stream.write_all(&body);
         }
         Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }

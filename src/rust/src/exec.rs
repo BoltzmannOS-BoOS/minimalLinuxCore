@@ -583,6 +583,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_auto_attack" => auto_attack_cmd(),
         "__builtin_self_state" => { self_state_cmd(); config::EXIT_ALLOWED },
         "__builtin_health_check" => health_check_cmd(),
+        "__builtin_identity" => { identity_cmd(); config::EXIT_ALLOWED },
         "__builtin_proc_list" => proc_list_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
@@ -592,6 +593,18 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
 }
 
 // ── Layer 2: Auto-Attack ───────────────────────────────────────────────────
+
+
+fn identity_cmd() {
+    println!("=== BoOS Self-Identity ===");
+    println!("session: agent-{}", std::process::id());
+    println!("trusted-core: boos-gateway");
+    println!("trusted-core: boos-supervisor");
+    println!("protected-regions: /etc /bin /sbin /usr /lib /boot /proc");
+    println!("protected-regions: /var/boos/results /var/boos/memory /var/log");
+    println!("boundary: session-id + trusted-cores + protected-paths");
+    println!("=== End Identity ===");
+}
 
 fn auto_attack_cmd() -> i32 {
     use std::process::Command;
