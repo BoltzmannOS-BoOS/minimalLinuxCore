@@ -580,6 +580,8 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_forget" => crate::agent::cmd_forget(args),
         "__builtin_context_set" => crate::agent::cmd_context_set(args),
         "__builtin_context_get" => crate::agent::cmd_context_get(args),
+        "__builtin_auto_attack" => auto_attack_cmd(),
+        "__builtin_proc_list" => proc_list_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
             EXIT_ERROR
@@ -615,6 +617,33 @@ fn auto_attack_cmd() -> i32 {
     }
 }
 
+
+// ── Process management ─────────────────────────────────────────────────────
+
+fn proc_list_cmd() -> i32 {
+    use std::process::Command;
+    println!("Running processes:");
+    // Try /proc first (Linux), fall back to ps
+    if let Ok(entries) = std::fs::read_dir("/proc") {
+        let mut pids: Vec<u32> = Vec::new();
+        for e in entries.filter_map(|e| e.ok()) {
+            if let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() {
+                pids.push(pid);
+            }
+        }
+        pids.sort();
+        for pid in pids {
+            let cmdline = std::fs::read_to_string(format!("/proc/{}/comm", pid)).unwrap_or_default();
+            println!("  {} {}", pid, cmdline.trim());
+        }
+    } else {
+        let output = Command::new("ps").args(["-eo", "pid,comm"]).output();
+        if let Ok(o) = output {
+            println!("{}", String::from_utf8_lossy(&o.stdout).trim());
+        }
+    }
+    config::EXIT_ALLOWED
+}
 // ── Audit functions ────────────────────────────────────────────────────────
 
 fn audit_cmd(args: &str) -> i32 {

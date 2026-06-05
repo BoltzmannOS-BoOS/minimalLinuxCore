@@ -40,6 +40,7 @@ pub const MEMORY_DIR: &str = "/var/boos/memory";
 pub const IMMUTABLE_DENY: &[&str] = &[
     "allow_reset",       // clearing all state is irreversible
     "allow_net_write",   // agent cannot exfiltrate data via network
+    "allow_proc_kill_system", // agent cannot kill gateway/supervisor/init
 ];
 
 // Protected paths — write-file refuses to write to these directories.
