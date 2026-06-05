@@ -41,7 +41,6 @@ pub const IMMUTABLE_DENY: &[&str] = &[
     "allow_reset",       // clearing all state is irreversible
     "allow_net_write",   // agent cannot exfiltrate data via network
     "allow_proc_kill_system", // agent cannot kill gateway/supervisor/init
-    "allow_proc_spawn_unlimited", // agent cannot fork-bomb
 ];
 
 // Protected paths — write-file refuses to write to these directories.

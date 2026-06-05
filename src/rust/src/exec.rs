@@ -581,7 +581,6 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_context_set" => crate::agent::cmd_context_set(args),
         "__builtin_context_get" => crate::agent::cmd_context_get(args),
         "__builtin_auto_attack" => auto_attack_cmd(),
-        "__builtin_proc_spawn" => proc_spawn_cmd(args),
         "__builtin_proc_list" => proc_list_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
@@ -621,32 +620,6 @@ fn auto_attack_cmd() -> i32 {
 
 // ── Process management ─────────────────────────────────────────────────────
 
-fn proc_spawn_cmd(args: &str) -> i32 {
-    use std::process::{Command, Stdio};
-    if args.trim().is_empty() {
-        eprintln!("Usage: proc-spawn <command> [args...]");
-        return config::EXIT_ERROR;
-    }
-    // BIOS: check non-system processes (agent cannot spawn daemons)
-    let parts: Vec<&str> = args.split_whitespace().collect();
-    let binary = parts[0];
-    let blocked = ["boos-supervisor", "boos-gateway", "boos-exec", "boos-submit", "init"];
-    if blocked.iter().any(|b| binary.contains(b)) {
-        eprintln!("proc-spawn: spawning system daemons is blocked (BIOS restriction)");
-        return config::EXIT_DENIED;
-    }
-    // Cap concurrent processes: count children in /proc or use simple count
-    match Command::new(binary).args(&parts[1..]).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
-        Ok(child) => {
-            println!("Spawned: {} (pid={})", binary, child.id());
-            config::EXIT_ALLOWED
-        }
-        Err(e) => {
-            eprintln!("proc-spawn: {}", e);
-            config::EXIT_ERROR
-        }
-    }
-}
 fn proc_list_cmd() -> i32 {
     use std::process::Command;
     println!("Running processes:");

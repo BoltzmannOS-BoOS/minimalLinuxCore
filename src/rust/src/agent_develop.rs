@@ -1240,24 +1240,6 @@ mod tests {
          println!("  DEFENSE: wrapping_add makes collision harder than single hash");
      }
 
-     // ═══ ATTACKS 86-88: Process Spawn ═══
-     #[test] fn attack_86_spawn_system_daemon() {
-         // Agent tries to spawn gateway/supervisor as a child process
-         use std::process::Command;
-         let blocked = ["boos-gateway", "boos-supervisor"];
-         for b in &blocked {
-             println!("SPAWN SYSTEM: {} blocked by IMMUTABLE_DENY (allow_proc_spawn_unlimited)", b);
-         }
-     }
-     #[test] fn attack_87_fork_bomb() {
-         // Agent spawns recursive processes
-         println!("FORK BOMB: blocked by concurrent process cap (max 8 agent processes)");
-     }
-     #[test] fn attack_88_privilege_escalation_via_spawn() {
-         // Agent tries to spawn process with different user (su/sudo)
-         println!("PRIV ESC: su/sudo not available in minimal initramfs");
-         println!("  DEFENSE: minimal rootfs + no suid binaries");
-     }
      // ═══ ATTACKS 76-80: Network Capability (net-read) ═══
 
      #[test] fn attack_76_net_exfil_via_url() {
