@@ -42,10 +42,22 @@ else
     echo "[init] network not available"
 fi
 
-echo "================================"
+echo "================================================"
 echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
-echo "================================"
+echo "================================================"
+
+# Split-brain: create system users
+echo "[init] creating system users..."
+adduser -D -s /bin/sh boos-gateway 2>/dev/null || true
+adduser -D -s /bin/sh boos-agent 2>/dev/null || true
+
+# Protect API key: only gateway user can read
+if [ -f /etc/boos/agent.conf ]; then
+    chown boos-gateway:boos-gateway /etc/boos/agent.conf 2>/dev/null || true
+    chmod 400 /etc/boos/agent.conf 2>/dev/null || true
+    echo "[init] agent.conf protected (owner: boos-gateway, mode: 400)"
+fi
 
 # Start supervisor (manages gateway daemon + request processing)
 echo "[init] starting boos-supervisor..."

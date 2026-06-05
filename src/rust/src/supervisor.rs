@@ -25,6 +25,7 @@ fn mtime_secs(path: &str) -> Option<u64> {
 struct DaemonConfig {
     name: String,
     exec: String,
+    user: String,   // optional — if set, run daemon as this user
     restart: String, // "always" or "never"
     enabled: bool,
 }
@@ -74,6 +75,7 @@ fn load_daemon_configs() -> Vec<DaemonConfig> {
         let kv = registry::parse_kv_file(&path);
         let name = kv.get("name").cloned().unwrap_or_default();
         let exec = kv.get("exec").cloned().unwrap_or_default();
+        let user = kv.get("user").cloned().unwrap_or_default();
         let restart = kv.get("restart").cloned().unwrap_or_else(|| "always".into());
         let enabled = kv.get("enabled").map(|v| v == "1").unwrap_or(false);
 
@@ -85,7 +87,7 @@ fn load_daemon_configs() -> Vec<DaemonConfig> {
             continue;
         }
 
-        configs.push(DaemonConfig { name, exec, restart, enabled });
+        configs.push(DaemonConfig { name, exec, user, restart, enabled });
     }
 
     configs
@@ -97,15 +99,24 @@ fn spawn_daemon(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>) {
         return;
     }
 
-    let cmd = parts[0];
-    let args = &parts[1..];
-
     log::log("boos-supervisor", "starting", &[
         ("daemon", &d.name),
         ("cmd", &d.exec),
     ]);
 
-    match Command::new(cmd).args(args).spawn() {
+    // If user is specified, run via su -c
+    let spawn_result = if !d.user.is_empty() {
+        let cmd_str = d.exec.clone();
+        Command::new("su")
+            .args(["-s", "/bin/sh", "-c", &cmd_str, &d.user])
+            .spawn()
+    } else {
+        let cmd = parts[0];
+        let args = &parts[1..];
+        Command::new(cmd).args(args).spawn()
+    };
+
+    match spawn_result {
         Ok(child) => {
             let pid = child.id();
             children.insert(d.name.clone(), ChildInfo {
