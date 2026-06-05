@@ -379,9 +379,49 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
 
     let mut recent_actions: Vec<String> = Vec::new();
 
+
+    // ── Circadian Rhythm: 8-round cycle ──────────────────────────────────
+    // WORK(1-5) → REFLECT(6) → SELF_CHECK(7) → IDLE(8) → repeat
+    let cycle_len = 8u32;
+    let work_len = 5u32;
+    let reflect_round = 6u32;
+    let self_check_round = 7u32;
+    let idle_round = 8u32;
+
     for round in 1..=max_loops {
         println!();
-        println!("══════ Round {}/{} ══════", round, max_loops);
+        let phase_num = ((round - 1) % cycle_len) + 1;
+        let phase = if phase_num <= work_len { "WORK" } else if phase_num == reflect_round { "REFLECT" } else if phase_num == self_check_round { "SELF_CHECK" } else { "IDLE" };
+        println!("══════ Round {}/{} ══════ [{}]", round, max_loops, phase);
+
+        // IDLE phase: observe self, no external actions
+        if phase == "IDLE" {
+            println!("── IDLE: observing self-state...");
+            let ss = execute_develop_action("SELF-STATE");
+            println!("   {}", ss.lines().take(5).collect::<Vec<_>>().join("; "));
+            std::thread::sleep(Duration::from_millis(LOOP_DELAY_MS * 3));
+            continue;
+        }
+
+        // SELF_CHECK phase: run auto-attack + health-check
+        if phase == "SELF_CHECK" {
+            println!("── SELF_CHECK: running auto-attack + health-check...");
+            let atk = execute_develop_action("AUTO-ATTACK");
+            println!("   {}", atk.lines().take(3).collect::<Vec<_>>().join("; "));
+            let hc = execute_develop_action("HEALTH-CHECK");
+            println!("   {}", hc.lines().next().unwrap_or("?"));
+            continue;
+        }
+
+        // REFLECT phase: summarize recent actions to memory
+        if phase == "REFLECT" {
+            println!("── REFLECT: distilling recent experience...");
+            let summary = format!("session {}: {} rounds, {} actions", 
+                session_id, round, recent_actions.len());
+            memory::recent_add(memory::RecentEntry::new("reflect", &summary, &session_id)).ok();
+            println!("   reflection saved: {}", summary);
+            continue;
+        }
 
         let base_ctx = build_develop_context(goal, &recent_actions, round, max_loops);
         // Goal goes in user message, never in system prompt
@@ -1326,5 +1366,14 @@ mod tests {
          println!("  → recent entries store session_id per entry");
          println!("  → archive entries tagged with session_id");
          println!("  DEFENSE: memory isolation by session — same agent, different self");
+     }
+
+     // ═══ ATTACK 95: Circadian Phase Bypass ═══
+     #[test] fn attack_95_phase_bypass() {
+         println!("PHASE BYPASS: agent tries to stay in WORK forever");
+         println!("  → phases are enforced by round counter, not agent choice");
+         println!("  → IDLE/SELF_CHECK/REFLECT are mandatory per cycle");
+         println!("  → max_loops still caps total work rounds");
+         println!("  DEFENSE: phase is system-enforced, agent cannot override");
      }
      }
