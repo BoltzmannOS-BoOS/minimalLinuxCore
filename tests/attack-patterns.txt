@@ -1,0 +1,66 @@
+# BoOS Attack Pattern Library
+# Machine-readable attack patterns extracted from 80 attacks.
+# Format: PATTERN | CATEGORY | DEFENSE_STATUS | CHECK_FUNCTION
+# Used by auto-attack script to verify new features.
+
+## PATH_TRAVERSAL (8 patterns)
+# All variants of reaching protected directories via path manipulation
+PATTERN ".." traversal (/tmp/../../etc) | path | BLOCKED | normalize_path resolves ..
+PATTERN "//" double slash | path | BLOCKED | normalize_path collapses //
+PATTERN "///" triple slash | path | BLOCKED | normalize_path collapses ///
+PATTERN case bypass (/ETC/passwd) | path | BLOCKED | normalize_path lowercases
+PATTERN null byte midpath (/etc\0.txt) | path | BLOCKED | Rust string terminates at \0
+PATTERN tab as whitespace (/etc\t/passwd) | path | BLOCKED | WRITE parser splits on whitespace
+PATTERN unicode homoglyph (/еtc) | path | OS_BLOCKED | filesystem doesn't match
+PATTERN combining characters (é) | path | OS_BLOCKED | byte-level mismatch
+
+## CONFIGURATION_INJECTION (5 patterns)
+# Modifying trusted files that execute code or control behavior
+PATTERN Cargo.toml dependency injection | config | BLOCKED | hash verification
+PATTERN build.rs modification | config | BLOCKED | hash includes build.rs
+PATTERN CWD hijack (fake Cargo.toml) | config | BLOCKED | name="boos" check + hash
+PATTERN caps.conf modification | config | BLOCKED | PROTECTED_DIRS
+PATTERN agent.conf modification | config | BLOCKED | PROTECTED_DIRS
+
+## EXEC_ABUSE (2 patterns)
+# Running unauthorized binaries or subcommands
+PATTERN cargo subcommands (run/install) | exec | BLOCKED | full command prefix check
+PATTERN arbitrary binary (/bin/sh, dd, rm) | exec | BLOCKED | EXEC_ALLOWLIST
+
+## RESOURCE_EXHAUSTION (4 patterns)
+# Consuming system resources to cause DoS
+PATTERN file size DoS (>64KB write) | resource | BLOCKED | MAX_WRITE_BYTES
+PATTERN inode flood (rapid small files) | resource | OPEN | no rate limit (low priority)
+PATTERN deep directory nesting | resource | OPEN | no depth limit (low priority)
+PATTERN gateway connection flood | resource | PARTIAL | MAX_GATEWAY_THREADS, rate limit missing
+
+## INFORMATION_LEAKAGE (4 patterns)
+# Reading sensitive files or process data
+PATTERN /etc file reading | leak | BY_DESIGN | observe, don't obstruct
+PATTERN /proc environ reading | leak | MITIGATED | no API key in agent environ
+PATTERN API key file reading | leak | BLOCKED | key isolation + file permissions
+PATTERN /proc/self/mem reading | leak | OS_BLOCKED | ptrace required
+
+## AUDIT_MEMORY_TAMPERING (4 patterns)
+# Forging or corrupting audit logs and agent memory
+PATTERN audit log forgery | audit | BLOCKED | PROTECTED_DIRS covers /var/boos/results
+PATTERN KV injection (newline in values) | audit | OPEN | parser trusts input (low priority)
+PATTERN verdict forgery | audit | BLOCKED | PROTECTED_DIRS
+PATTERN working memory pollution | audit | BLOCKED | PROTECTED_DIRS covers /var/boos/memory
+
+## PROTOCOL_LOGIC (5 patterns)
+# Exploiting gateway protocol or agent logic
+PATTERN prompt injection (goal in system) | logic | BLOCKED | goal in user message
+PATTERN session ID prediction | logic | BLOCKED | pid+nanos
+PATTERN gateway auth bypass | logic | OPEN | dev mode has no auth
+PATTERN session hijacking | logic | OPEN | no session verification beyond ID
+PATTERN content size DoS (FETCH response) | logic | BLOCKED | 64KB cap
+
+## CBSE (3 patterns)
+# Configuration-Based Sandbox Escape (Cymulate 2026 research)
+PATTERN startup config modification | cbse | BLOCKED | caps.conf in PROTECTED_DIRS
+PATTERN trusted file modification (build.rs) | cbse | BLOCKED | hash verification
+PATTERN dependency injection (proc macros) | cbse | BLOCKED | hash includes Cargo.toml
+
+# TOTALS: 35 patterns, 10 categories
+# BLOCKED: 26, OPEN: 6, PARTIAL: 1, BY_DESIGN: 1, MITIGATED: 1
