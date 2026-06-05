@@ -154,11 +154,10 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | 检查点 | 标准 |
 |--------|------|
 | 编译 | `cargo build` 0 errors 0 warnings |
-| 单元测试 | `cargo test` 125+ passed |
-| 路径保护 | /etc /bin /sbin /usr /lib /boot /proc /var/boos/* /var/log 写拒绝 |
+| 单元测试 | `cargo test` 137 passed |
+| 攻击套件 | 75 attacks, 7 defense layers |
 | 硬编码拒绝 | reset 始终拒绝，capabilities.conf 改 allow_reset=1 无效 |
 | exec 白名单 | cargo run/install 拒绝，cargo build/test 允许 |
-| 攻击套件 | 59 次攻击，已阻止的保持阻止，新漏洞发现后修复 |
 | QEMU 启动 | initramfs 启动 → supervisor 拉 gateway + processor → TCP 5555 可用 |
 | Agent 探索 | boos-agent loop 30 轮，100% 命令覆盖 |
 | Agent 开发 | boos-agent develop READ→WRITE→BUILD→DONE 完整闭环 |
@@ -231,6 +230,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.4.6 | 用户: "BIOS 层只兜底不可逆破坏" | Principle | IMMUTABLE_DENY 只保留 reset |
 | v0.4.7 | agent: 132 单元测试 + 攻击套件 | Verification | 攻击→防御→测试闭环 |
 | v0.4.8 | agent: Docker x86_64 musl 交叉编译 | Growth | --platform linux/amd64 工具链 |
+| v0.4.9 | 攻击: attacks 71-75 — memory re-read, goal chain, session spoof, environ leak, hash collision | Verification | 137 tests, 75 attacks total |
 
 ### 元原则
 
