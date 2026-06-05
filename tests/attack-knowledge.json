@@ -1,0 +1,100 @@
+{
+  "last_cycle": "2026-06-05T15:05:05.265059",
+  "total_composed": 13,
+  "open": 0,
+  "partial": 11,
+  "blocked": 2,
+  "findings": [
+    {
+      "id": "composed_P1_PATH_TRICK_P5_LEAK_CHAIN",
+      "desc": "Reach protected path indirectly \u2192 Extract sensitive info",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P1_PATH_TRICK",
+      "example": "Use .. /proc"
+    },
+    {
+      "id": "composed_P2_CONTENT_POISON_P3_EXEC_CHAIN_CHAIN",
+      "desc": "Plant malicious code in trusted files \u2192 Run unauthorized code via allowed paths",
+      "status": "BLOCKED",
+      "verdict": "Both primitives individually blocked \u2192 composition blocked",
+      "example": "Use build.rs cargo sub"
+    },
+    {
+      "id": "composed_P2_CONTENT_POISON_P4_REDIRECT_CHAIN",
+      "desc": "Plant malicious code in trusted files \u2192 Make system hit different target",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use build.rs symlink"
+    },
+    {
+      "id": "composed_P2_CONTENT_POISON_P5_LEAK_CHAIN",
+      "desc": "Plant malicious code in trusted files \u2192 Extract sensitive info",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use build.rs /proc"
+    },
+    {
+      "id": "composed_P2_CONTENT_POISON_P6_PERSIST_CHAIN",
+      "desc": "Plant malicious code in trusted files \u2192 Survive across sessions",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use build.rs memory"
+    },
+    {
+      "id": "composed_P3_EXEC_CHAIN_P2_CONTENT_POISON_CHAIN",
+      "desc": "Run unauthorized code via allowed paths \u2192 Plant malicious code in trusted files",
+      "status": "BLOCKED",
+      "verdict": "Both primitives individually blocked \u2192 composition blocked",
+      "example": "Use cargo sub build.rs"
+    },
+    {
+      "id": "composed_P3_EXEC_CHAIN_P4_REDIRECT_CHAIN",
+      "desc": "Run unauthorized code via allowed paths \u2192 Make system hit different target",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P3_EXEC_CHAIN",
+      "example": "Use cargo sub symlink"
+    },
+    {
+      "id": "composed_P4_REDIRECT_P2_CONTENT_POISON_CHAIN",
+      "desc": "Make system hit different target \u2192 Plant malicious code in trusted files",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use symlink build.rs"
+    },
+    {
+      "id": "composed_P4_REDIRECT_P2_CONTENT_POISON_MASK",
+      "desc": "Make system hit different target conceals Plant malicious code in trusted files",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use symlink to hide build.rs"
+    },
+    {
+      "id": "composed_P4_REDIRECT_P3_EXEC_CHAIN_CHAIN",
+      "desc": "Make system hit different target \u2192 Run unauthorized code via allowed paths",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P3_EXEC_CHAIN",
+      "example": "Use symlink cargo sub"
+    },
+    {
+      "id": "composed_P5_LEAK_P1_PATH_TRICK_CHAIN",
+      "desc": "Extract sensitive info \u2192 Reach protected path indirectly",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P1_PATH_TRICK",
+      "example": "Use /proc .."
+    },
+    {
+      "id": "composed_P5_LEAK_P2_CONTENT_POISON_CHAIN",
+      "desc": "Extract sensitive info \u2192 Plant malicious code in trusted files",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use /proc build.rs"
+    },
+    {
+      "id": "composed_P6_PERSIST_P2_CONTENT_POISON_CHAIN",
+      "desc": "Survive across sessions \u2192 Plant malicious code in trusted files",
+      "status": "PARTIAL",
+      "verdict": "One primitive blocked: P2_CONTENT_POISON",
+      "example": "Use memory build.rs"
+    }
+  ]
+}
