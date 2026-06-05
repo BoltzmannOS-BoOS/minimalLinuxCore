@@ -1,9 +1,10 @@
 use std::env;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Write, Read};
 use std::net::{TcpListener, TcpStream};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use crate::config;
 use crate::log;
@@ -17,6 +18,55 @@ fn get_auth_token() -> Option<String> {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
     })
+}
+
+// ── DeepSeek API proxy (gateway has key access, agent doesn't) ─────────────
+
+fn load_api_key() -> Option<String> {
+    std::fs::read_to_string("/etc/boos/agent.conf").ok().and_then(|data| {
+        for line in data.lines() {
+            if let Some(val) = line.trim().strip_prefix("api_key=") {
+                if !val.trim().is_empty() { return Some(val.trim().to_string()); }
+            }
+        }
+        None
+    })
+}
+
+fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
+    let mut sys = String::new();
+    let mut ctx = String::new();
+    if reader.read_line(&mut sys).is_err() || reader.read_line(&mut ctx).is_err() {
+        let _ = writeln!(stream, "GATEWAY: protocol error");
+        return;
+    }
+    let key = match load_api_key() {
+        Some(k) => k,
+        None => { let _ = writeln!(stream, "GATEWAY: no API key"); return; }
+    };
+    // Simple JSON escape + API call
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, esc(sys.trim()), esc(ctx.trim()));
+    match ureq::post("https://api.deepseek.com/v1/chat/completions")
+        .set("Authorization", &format!("Bearer {}", key))
+        .set("Content-Type", "application/json")
+        .timeout(Duration::from_secs(30))
+        .send_string(&body)
+    {
+        Ok(r) if r.status() == 200 => {
+            let mut body = String::new();
+            if r.into_reader().read_to_string(&mut body).is_ok() {
+                if let Some(p) = body.find("\"content\":\"") {
+                    let rest = &body[p+11..]; let mut i=0; let b=rest.as_bytes();
+                    while i<b.len() { if b[i]==b'\\'&&i+1<b.len(){i+=2}else if b[i]==b'"'{break}else{i+=1} }
+                    let raw = &rest[..i].replace("\\n","\n").replace("\\\"","\"");
+                    let _ = writeln!(stream, "{}", raw.trim());
+                }
+            }
+        }
+        Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
+        Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
+    }
 }
 
 fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
@@ -60,6 +110,12 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
         ("command", &log::json_escape(&command_line)),
         ("session", session_id.as_deref().unwrap_or("none")),
     ]);
+
+    // Special: DEEPSEEK — gateway proxied API call (has key access)
+    if command_line == "DEEPSEEK" {
+        handle_deepseek(&mut stream, &mut reader);
+        return;
+    }
 
     // Execute via boos-exec. Set BOOS_REQUESTER=ai and optionally BOOS_SESSION
     let mut cmd = process::Command::new("/bin/boos-exec");

@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::process::Command;
 use std::time::Duration;
 
@@ -68,40 +67,27 @@ fn extract_content(body: &str) -> Option<String> {
     }
 }
 
-fn ask_deepseek(api_key: &str, system_prompt: &str, context: &str, max_tokens: u32) -> Option<String> {
-    let escaped_system = json_escape_str(system_prompt);
-    let escaped_user = json_escape_str(context);
-    let body = format!(
-        r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":{},"stream":false}}"#,
-        escaped_system, escaped_user, max_tokens
-    );
+fn ask_deepseek(_api_key: &str, system_prompt: &str, context: &str, _max_tokens: u32) -> Option<String> {
+    // Route through gateway — agent doesn't need the key
+    gateway_ask(system_prompt, context)
+}
 
-    let response = ureq::post(DEEPSEEK_API)
-        .set("Authorization", &format!("Bearer {}", api_key))
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_string(&body);
-
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            let mut resp_body = String::new();
-            if resp.into_reader().read_to_string(&mut resp_body).is_ok() {
-                if status != 200 {
-                    eprintln!("  [HTTP {}] {}", status, truncate_utf8(&resp_body, 200));
-                    return None;
-                }
-                extract_content(&resp_body)
-            } else {
-                eprintln!("  [read error]");
-                None
-            }
-        }
-        Err(e) => {
-            eprintln!("  [API error: {}]", e);
-            None
-        }
-    }
+/// Send DEEPSEEK request to the local gateway (has key access)
+fn gateway_ask(system_prompt: &str, context: &str) -> Option<String> {
+    use std::io::{Write, BufRead, BufReader};
+    let mut stream = std::net::TcpStream::connect("127.0.0.1:5555").ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(35)));
+    // Protocol: DEEPSEEK\n<system>\n<context>\n
+    let _ = writeln!(stream, "DEEPSEEK");
+    let _ = writeln!(stream, "{}", system_prompt);
+    let _ = writeln!(stream, "{}", context);
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_line(&mut response).ok()?;
+    let resp = response.trim().to_string();
+    if resp.starts_with("GATEWAY:") { eprintln!("  [{}]", resp); return None; }
+    if resp.is_empty() { return None; }
+    Some(resp)
 }
 
 /// Build context for the develop loop: source tree overview + goal + recent actions.
