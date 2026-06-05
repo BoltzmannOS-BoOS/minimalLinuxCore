@@ -20,6 +20,7 @@ PATTERN Cargo.toml dependency injection | config | BLOCKED | hash verification
 PATTERN build.rs modification | config | BLOCKED | hash includes build.rs
 PATTERN CWD hijack (fake Cargo.toml) | config | BLOCKED | name="boos" check + hash
 PATTERN caps.conf modification | config | BLOCKED | PROTECTED_DIRS
+PATTERN Cargo.lock version tampering | config | FIXED | hash includes Cargo.lock
 PATTERN agent.conf modification | config | BLOCKED | PROTECTED_DIRS
 
 ## EXEC_ABUSE (2 patterns)
