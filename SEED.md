@@ -289,6 +289,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.6.5 | 攻击: Cargo.lock 版本篡改 | Security | lockfile 加入 CBSE hash, 6 文件受保护 |
 | v0.6.6 | 攻击: 82-85 — symlink, TOCTOU, test exfil, repeat bypass | Verification | 1 fixed, 4 accepted, marginal ROI confirms stop |
 | v0.7.0 | Layer 3: Attack Composition Engine | Growth | 7 primitives + 4 operators → 60 composed attacks, 自动变异 |
+| v0.7.1 | Attack Evolution Engine (自进化) | Growth | 48 compositions tested, 0 OPEN, 7 layers hold across all chains |
 
 ### 元原则
 
