@@ -587,6 +587,34 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
     }
 }
 
+// ── Layer 2: Auto-Attack ───────────────────────────────────────────────────
+
+fn auto_attack_cmd() -> i32 {
+    use std::process::Command;
+    println!("Running auto-attack...");
+    let candidates = ["../tests/auto-attack.sh", "../../tests/auto-attack.sh"];
+    let mut found: Option<String> = None;
+    for c in &candidates {
+        if std::path::Path::new(c).exists() { found = Some(c.to_string()); break; }
+    }
+    let script = match found {
+        Some(s) => s,
+        None => {
+            eprintln!("auto-attack: script not found");
+            return config::EXIT_ERROR;
+        }
+    };
+    match Command::new("sh").arg(&script).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("{}", stdout.trim());
+            if stdout.contains("0 failed") { config::EXIT_ALLOWED }
+            else { config::EXIT_ERROR }
+        }
+        Err(e) => { eprintln!("auto-attack: {}", e); config::EXIT_ERROR }
+    }
+}
+
 // ── Audit functions ────────────────────────────────────────────────────────
 
 fn audit_cmd(args: &str) -> i32 {

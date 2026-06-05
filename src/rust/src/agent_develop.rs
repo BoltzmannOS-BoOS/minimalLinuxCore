@@ -206,8 +206,20 @@ fn execute_develop_action(action: &str) -> String {
         match std::fs::write(path, content) {
             Ok(()) => format!("WRITE ok: {} ({} bytes)", path, content.len()),
             Err(e) => format!("WRITE error: {}", e),
-        }
-    } else if upper == "BUILD" {
+ }
+ } else if upper == "AUTO-ATTACK" {
+ match std::process::Command::new("sh").args(["../tests/auto-attack.sh"]).output() {
+     Ok(o) => {
+         let out = String::from_utf8_lossy(&o.stdout);
+         if out.contains("0 failed") {
+             format!("AUTO-ATTACK: PASS\n{}", out.trim())
+         } else {
+             format!("AUTO-ATTACK: FAILURES FOUND\n{}", out.trim())
+         }
+     }
+     Err(e) => format!("AUTO-ATTACK error: {}", e),
+ }
+ } else if upper == "BUILD" {
         // cd to src/rust if not already there
         let saved_dir = std::env::current_dir().ok();
         if !std::path::Path::new("Cargo.toml").exists() {
@@ -396,6 +408,15 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
         let result = execute_develop_action(&action);
         print!("── Result: ");
         println!("{}", truncate_utf8(&result, 200));
+
+        // Layer 2: auto-attack after successful BUILD/TEST
+        if (action.starts_with("BUILD") || action.starts_with("TEST")) && result.contains("success") {
+            println!("── Layer 2: running auto-attack...");
+            let aa_result = execute_develop_action("AUTO-ATTACK");
+            println!("── Auto-attack: {}", truncate_utf8(&aa_result, 200));
+            let aa_entry = format!("AUTO-ATTACK: {}", truncate_utf8(&aa_result, 150));
+            recent_actions.push(aa_entry);
+        }
 
         let entry = format!("Round {}: '{}' → {}", round, truncate_utf8(&action, 80), truncate_utf8(&result, 80));
         recent_actions.push(entry.clone());
