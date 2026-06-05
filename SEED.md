@@ -47,6 +47,28 @@ Goal: 构建一个 AI agent 作为第一操作者的最小 Linux 身体
 
 ## Growth Framework（生长框架）
 
+### Development Layers — Meta-Automation Upgrade Path
+
+> 如 Factorio：Layer 0 手动采集，每层自动化下一层。升级的是开发方式，不是功能列表。
+
+```
+Layer 0: 手动（当前终端）
+  指令 → 执行 → 审查 → 修正
+  = 80 轮攻击/防御，每轮由人触发
+
+Layer 1: 自动化流程（已完成）
+  功能 → 先攻击 → 修复 → 合并
+  = 5 条内核增长规则 → 攻击变成开发流程的固定步骤
+
+Layer 2: Agent 自我攻击（下一步）
+  agent 记住攻击模式 → 写新功能时自己先攻击 → 自己修 → 人审查
+  SEED.md 的攻击模式库被 agent 自动消费
+
+Layer 3: 攻击模式自进化
+  系统识别新攻击类 → 自动更新防御模板 → agent 用新模板攻击自己
+  攻击知识自己生长，路径依赖不可避免，复杂度上限持续升高
+```
+
 ### Phase 0: Minimal Boot
 
 ```
@@ -243,6 +265,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.4.9 | 攻击: attacks 71-75 — memory re-read, goal chain, session spoof, environ leak, hash collision | Verification | 137 tests, 75 attacks total |
 | v0.5.0 | 用户: "内核是空的，但边际效应到了" | Principle | 5 条内核增长规则 — 能力前置于功能、攻击前置于合并、窄接口、默认只读、不信任 agent |
 | v0.5.1 | 实现: FETCH 协议 (read-only network) | Growth | gateway 代理 HTTPS，无外泄、无 SSRF、64KB 上限 |
+| v0.5.2 | 用户: Factorio 式开发层升级 | Meta | Layer 0→1→2→3 模型，自动化元层持续升高 |
 
 ### 元原则
 
