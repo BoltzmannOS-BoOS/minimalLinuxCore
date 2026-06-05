@@ -282,6 +282,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.5.1 | 实现: FETCH 协议 (read-only network) | Growth | gateway 代理 HTTPS，无外泄、无 SSRF、64KB 上限 |
 | v0.5.2 | 用户: Factorio 式开发层升级 | Meta | Layer 0→1→2→3 模型，自动化元层持续升高 |
 | v0.6.0 | 用户: "自指察觉 — 系统要知道该优化什么" | Principle | 成本自指 4 条原则，不同资源不同策略，停止也是优化 |
+| v0.6.1 | Layer 2: auto-attack script + pattern library | Growth | 35 patterns, 76 tests, zero API cost, local verification |
 
 ### 元原则
 
