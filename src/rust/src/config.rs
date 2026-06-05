@@ -90,6 +90,10 @@ pub fn normalize_path(path: &str) -> String {
     result
 }
 
+
+// ── Body: Homeostasis thresholds ──────────────────────────────────────────
+pub const HEALTH_MEMORY_RECENT_MAX: usize = 80;   // recent entries before warning
+pub const HEALTH_UPTIME_WARN: u64 = 3600;         // 1 hour — time to reflect
 #[cfg(test)]
 mod path_tests {
     use super::*;

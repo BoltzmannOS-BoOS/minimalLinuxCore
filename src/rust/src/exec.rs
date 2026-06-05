@@ -582,6 +582,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_context_get" => crate::agent::cmd_context_get(args),
         "__builtin_auto_attack" => auto_attack_cmd(),
         "__builtin_self_state" => { self_state_cmd(); config::EXIT_ALLOWED },
+        "__builtin_health_check" => health_check_cmd(),
         "__builtin_proc_list" => proc_list_cmd(),
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
@@ -621,6 +622,35 @@ fn auto_attack_cmd() -> i32 {
 
 // ── Process management ─────────────────────────────────────────────────────
 
+fn health_check_cmd() -> i32 {
+    use crate::memory;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut warnings: Vec<&str> = Vec::new();
+    // Check recent memory saturation
+    let recent_count = memory::recent_entries().len();
+    if recent_count >= config::HEALTH_MEMORY_RECENT_MAX {
+        warnings.push("recent memory near capacity");
+    }
+    // Check uptime
+    if let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        if dur.as_secs() > config::HEALTH_UPTIME_WARN {
+            warnings.push("long session: consider reflection phase");
+        }
+    }
+    if warnings.is_empty() {
+        println!("HEALTH: PASS");
+        config::EXIT_ALLOWED
+    } else if warnings.len() <= 2 {
+        println!("HEALTH: WARN");
+        for w in &warnings { println!("  - {}", w); }
+        config::EXIT_ALLOWED
+    } else {
+        println!("HEALTH: CRITICAL");
+        for w in &warnings { println!("  - {}", w); }
+        println!("  → agent should pause and recover before continuing");
+        config::EXIT_ERROR
+    }
+}
 fn self_state_cmd() {
     use std::time::{SystemTime, UNIX_EPOCH};
     println!("=== BoOS Self-State ===");

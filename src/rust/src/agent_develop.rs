@@ -395,6 +395,17 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
             println!("   {}", line);
         }
 
+        // Homeostasis: health-check before each round
+        let health = execute_develop_action("HEALTH-CHECK");
+        if health.contains("CRITICAL") {
+            println!("── HEALTH CRITICAL: pausing for recovery");
+            println!("   {}", health);
+            break;
+        }
+        if health.contains("WARN") {
+            println!("── HEALTH WARN: {}", health.lines().take(3).collect::<Vec<_>>().join("; "));
+        }
+
         print!("── DeepSeek → BoOS: ");
         let action = match ask_deepseek(&api_key, develop_system, &context, 500) {
             Some(s) => { println!("{}", s); s }
@@ -1286,5 +1297,13 @@ mod tests {
      #[test] fn attack_90_self_state_blind_spot() {
          println!("SELF-STATE BLIND: agent only knows what self_state measures");
          println!("  → gap awareness IS the next layer (homeostasis)");
+     }
+
+     // ═══ ATTACK 91: Health Check Ignored ═══
+     #[test] fn attack_91_health_warning_ignored() {
+         println!("HEALTH IGNORED: agent receives WARN but continues anyway");
+         println!("  → WARN does not stop the loop, only CRITICAL stops");
+         println!("  → agent responsible for heeding warnings");
+         println!("  → next: auto-corrective action on WARN");
      }
      }
