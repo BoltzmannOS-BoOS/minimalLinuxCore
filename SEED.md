@@ -293,7 +293,24 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.7.1 | Attack Evolution Engine (自进化) | Growth | 48 compositions tested, 0 OPEN, 7 layers hold across all chains |
 | v0.7.2 | 用户纠正: "proc-spawn 是 sysadmin 不是 AI" | Correction | 回退 proc-spawn。原则23：AI 要服务，不要 syscall。 |
 | v0.7.3 | Layer 3 整合: 进化引擎入 auto-attack | Growth | 每次攻击测试自动运行进化，知识库持续生长 |
-| v0.8.0 | 躯体: self-state (proprioception) | Body | agent 知道自己的状态 — 上线时间/记忆量/上下文大小/攻击状态。躯体五步第一步。 |
+| v0.8.0 | 躯体: self-state (proprioception) | Body | agent 知道自己的状态 — 上线时间/记忆量/上下文大小/攻击状态 |
+| v0.8.1 | 躯体: health-check (homeostasis) | Body | agent 知道什么是健康 — WARN 注入上下文, CRITICAL 暂停循环 |
+
+### Body Completion Map（躯体五步）
+
+```
+✅ 1. Proprioception (self-state)    — 知道自己的身体当前是什么状态
+✅ 2. Homeostasis   (health-check)   — 知道什么状态是健康的，偏离时主动纠正
+⬜ 3. Self/Non-self (identity)       — 区分"我"和"非我"（MHC 标记）
+⬜ 4. Circadian     (phase-rhythm)   — 内置节律：工作/反思/自检/空转
+⬜ 5. Embodied Memory                — 记忆主动影响决策，不是被动档案
+```
+
+> 没有本体感觉的不是躯体，是工具。
+> 没有内稳态的知觉只是数据，没有意义。
+> 没有边界感的躯体不是个体，是碎片。
+> 没有节律的个体永远在应激，没有主体性。
+> 没有具身记忆的经验只是存档，不会变成智慧。
 
 ### 元原则
 
