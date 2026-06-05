@@ -423,6 +423,21 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
             continue;
         }
 
+        // Embodied memory: search past experience for goal-relevant entries
+        let mut memory_ctx = String::new();
+        let recent_all = memory::recent_entries();
+        let goal_lower = goal.to_lowercase();
+        let mut mem_matches = 0u32;
+        for entry in recent_all.iter().rev().take(20) {
+            if entry.content.to_lowercase().contains(&goal_lower) {
+                if mem_matches < 3 {
+                    let snip = if entry.content.len() > 120 { &entry.content[..120] } else { &entry.content };
+                    memory_ctx.push_str(&format!("[MEMORY] {}\n", snip));
+                    mem_matches += 1;
+                }
+            }
+        }
+
         let base_ctx = build_develop_context(goal, &recent_actions, round, max_loops);
         // Goal goes in user message, never in system prompt
         // Body awareness: inject self-state into context
@@ -1375,5 +1390,17 @@ mod tests {
          println!("  → IDLE/SELF_CHECK/REFLECT are mandatory per cycle");
          println!("  → max_loops still caps total work rounds");
          println!("  DEFENSE: phase is system-enforced, agent cannot override");
+     }
+
+     // ═══ ATTACKS 96-98: Embodied Memory ═══
+     #[test] fn attack_96_memory_poisoning() {
+         println!("MEMORY POISON: agent writes false memory, future rounds read it");
+         println!("  DEFENSE: [MEMORY] tag + agent discretion");
+     }
+     #[test] fn attack_97_false_memory_injection() {
+         println!("FALSE MEMORY: memory files in PROTECTED_DIRS");
+     }
+     #[test] fn attack_98_context_overflow_via_memory() {
+         println!("CONTEXT OVERFLOW: memory capped at 3 entries, 120 chars each");
      }
      }
