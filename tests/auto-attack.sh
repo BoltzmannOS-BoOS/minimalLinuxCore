@@ -39,4 +39,8 @@ grep "OPEN\|PARTIAL" "$P" | while read -r line; do
 done
 
 echo "" | tee -a "$REPORT"
-echo "Report: $REPORT" | tee -a "$REPORT"
+echo "--- Layer 3: Attack Evolution ---" | tee -a "$REPORT"
+EVOLVE="$PROJECT_ROOT/tests/attack-evolve.py"
+if [ -f "$EVOLVE" ]; then
+    python3 "$EVOLVE" 2>&1 | tail -5 | tee -a "$REPORT"
+fi
