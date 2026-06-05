@@ -242,6 +242,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.4.8 | agent: Docker x86_64 musl 交叉编译 | Growth | --platform linux/amd64 工具链 |
 | v0.4.9 | 攻击: attacks 71-75 — memory re-read, goal chain, session spoof, environ leak, hash collision | Verification | 137 tests, 75 attacks total |
 | v0.5.0 | 用户: "内核是空的，但边际效应到了" | Principle | 5 条内核增长规则 — 能力前置于功能、攻击前置于合并、窄接口、默认只读、不信任 agent |
+| v0.5.1 | 实现: FETCH 协议 (read-only network) | Growth | gateway 代理 HTTPS，无外泄、无 SSRF、64KB 上限 |
 
 ### 元原则
 
