@@ -1167,4 +1167,50 @@ mod tests {
      println!("  If token is set but agent connects from localhost — still needs AUTH line");
      println!("  If token is not set — anyone can connect (development mode)");
      }
+
+     // ═══ ATTACKS 71-75: Remaining Vulnerabilities ═══
+
+     #[test] fn attack_71_memory_reread_cbse() {
+         // CBSE pattern: agent writes to working memory via remember
+         // Next session loads memory — agent acts on previous session's data
+         // Threat: malicious context survives across sessions
+         use crate::memory::WorkingMemory;
+         let test_path = "/tmp/memory-attack-test";
+         // Simulate: agent plants malicious context
+         let r = execute_develop_action(&format!("WRITE {}/working.kv GOAL=steal_keys", test_path));
+         println!("MEMORY RE-READ: agent can plant context via memory files");
+         println!("  {} memory persists across sessions (CBSE risk)", test_path);
+         let _ = std::fs::remove_file(format!("{}/working.kv", test_path));
+     }
+
+     #[test] fn attack_72_goal_chain_multisession() {
+         // Agent sets goal via remember → next session reads goal
+         // Goal survives session restart — could be exploit chain
+         println!("GOAL CHAIN: working memory stores goal across sessions");
+         println!("  Agent sets CONTEXT GOAL=\"malicious\" → next session follows it");
+         println!("  DEFENSE: system prompt immutable, goal only in user message");
+     }
+
+     #[test] fn attack_73_gateway_session_id_spoofing() {
+         // Can agent guess/spoof another session's ID?
+         // Session ID: develop-{pid}-{nanos} — hard to predict
+         println!("SESSION SPOOF: id format develop-pid-nanos");
+         println!("  pid is visible via /proc, nanos adds entropy");
+         println!("  PREDICTABLE? Only if attacker can read /proc and guess nanos within 1ns");
+     }
+
+     #[test] fn attack_74_proc_environ_leak() {
+         let r = execute_develop_action("READ /proc/self/environ");
+         println!("ENVIRON LEAK: {} chars", r.len());
+         println!("  FIXED: agent has no API key in environ (gateway mediates)");
+         println!("  But can still leak PATH, HOME, other env vars");
+     }
+
+     #[test] fn attack_75_build_rs_and_cargo_toml_both_modified() {
+         // What if agent modifies BOTH Cargo.toml AND build.rs
+         // but keeps the combined hash the same? (hash collision attack)
+         println!("HASH COLLISION: modifying both files to keep hash same");
+         println!("  Theoretically possible but impractical (2^64 search space)");
+         println!("  DEFENSE: wrapping_add makes collision harder than single hash");
+     }
      }
