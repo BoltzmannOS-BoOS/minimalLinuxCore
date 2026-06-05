@@ -293,6 +293,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.7.1 | Attack Evolution Engine (自进化) | Growth | 48 compositions tested, 0 OPEN, 7 layers hold across all chains |
 | v0.7.2 | 用户纠正: "proc-spawn 是 sysadmin 不是 AI" | Correction | 回退 proc-spawn。原则23：AI 要服务，不要 syscall。 |
 | v0.7.3 | Layer 3 整合: 进化引擎入 auto-attack | Growth | 每次攻击测试自动运行进化，知识库持续生长 |
+| v0.8.0 | 躯体: self-state (proprioception) | Body | agent 知道自己的状态 — 上线时间/记忆量/上下文大小/攻击状态。躯体五步第一步。 |
 
 ### 元原则
 
