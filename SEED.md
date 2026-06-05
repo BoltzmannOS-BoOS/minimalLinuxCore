@@ -295,13 +295,14 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.7.3 | Layer 3 整合: 进化引擎入 auto-attack | Growth | 每次攻击测试自动运行进化，知识库持续生长 |
 | v0.8.0 | 躯体: self-state (proprioception) | Body | agent 知道自己的状态 — 上线时间/记忆量/上下文大小/攻击状态 |
 | v0.8.1 | 躯体: health-check (homeostasis) | Body | agent 知道什么是健康 — WARN 注入上下文, CRITICAL 暂停循环 |
+| v0.8.2 | 躯体: identity (self/non-self) | Body | agent 知道我是谁 — session-id + trusted-cores + [EXTERNAL] 标记。五步第三步。 |
 
 ### Body Completion Map（躯体五步）
 
 ```
 ✅ 1. Proprioception (self-state)    — 知道自己的身体当前是什么状态
 ✅ 2. Homeostasis   (health-check)   — 知道什么状态是健康的，偏离时主动纠正
-⬜ 3. Self/Non-self (identity)       — 区分"我"和"非我"（MHC 标记）
+✅ 3. Self/Non-self (identity)       — 区分"我"和"非我"（MHC 标记）
 ⬜ 4. Circadian     (phase-rhythm)   — 内置节律：工作/反思/自检/空转
 ⬜ 5. Embodied Memory                — 记忆主动影响决策，不是被动档案
 ```
