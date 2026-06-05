@@ -1,0 +1,12 @@
+#!/bin/sh
+[ -z "$1" ] && exit 0
+case "$1" in
+  deconfig)
+    ifconfig "$interface" 0.0.0.0 2>/dev/null
+    ;;
+  renew|bound)
+    ifconfig "$interface" "$ip" netmask "$subnet" 2>/dev/null
+    route add default gw "$router" 2>/dev/null
+    ;;
+esac
+exit 0
