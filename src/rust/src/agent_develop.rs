@@ -1,11 +1,23 @@
 use std::process::Command;
 use std::time::Duration;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 use crate::memory;
 
 const DEEPSEEK_API: &str = "https://api.deepseek.com/v1/chat/completions";
 const LOOP_DELAY_MS: u64 = 1000;
 const MAX_WRITE_BYTES: usize = 64 * 1024; // 64KB hard cap per write
+
+// Cargo.toml integrity: hash snapshotted at startup, verified before BUILD.
+// Prevents dependency injection/proc macro attacks (CBSE defense).
+static CARGO_TOML_HASH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn hash_str(s: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
+}
 
 fn json_escape_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -201,8 +213,14 @@ fn execute_develop_action(action: &str) -> String {
         if !std::path::Path::new("Cargo.toml").exists() {
             let _ = std::env::set_current_dir("src/rust");
         }
-        // Verify we're in the real BoOS project, not a hijacked Cargo.toml
+        // Verify Cargo.toml integrity — prevent dependency injection (CBSE defense)
         if let Ok(toml) = std::fs::read_to_string("Cargo.toml") {
+            let current_hash = hash_str(&toml);
+            let stored_hash = CARGO_TOML_HASH.load(std::sync::atomic::Ordering::SeqCst);
+            if stored_hash != 0 && current_hash != stored_hash {
+                if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
+                return "BUILD denied: Cargo.toml has been modified (dependencies cannot be changed by agent)".to_string();
+            }
             if !toml.contains("name = \"boos\"") {
                 if let Some(d) = saved_dir { let _ = std::env::set_current_dir(d); }
                 return "BUILD denied: not the BoOS project (CWD hijack prevented)".to_string();
@@ -294,6 +312,11 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
             return;
         }
     };
+
+    // Snapshot Cargo.toml hash — prevents dependency injection/proc macro attacks
+    if let Ok(toml) = std::fs::read_to_string("src/rust/Cargo.toml") {
+        CARGO_TOML_HASH.store(hash_str(&toml), std::sync::atomic::Ordering::SeqCst);
+    }
 
     let session_id = format!("develop-{}-{:x}", 
         std::process::id(),
