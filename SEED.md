@@ -284,6 +284,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.6.0 | 用户: "自指察觉 — 系统要知道该优化什么" | Principle | 成本自指 4 条原则，不同资源不同策略，停止也是优化 |
 | v0.6.1 | Layer 2: auto-attack script + pattern library | Growth | 35 patterns, 76 tests, zero API cost, local verification |
 | v0.6.2 | 修复: KV injection — sanitize_value 防换行注入 | Security | memory.rs 值转义, 143 tests |
+| v0.6.3 | Layer 2: auto-attack 融入 develop loop | Growth | BUILD/TEST 后自动攻击, 零 API 成本 |
 
 ### 元原则
 
