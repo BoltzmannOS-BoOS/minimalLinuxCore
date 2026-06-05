@@ -286,6 +286,7 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.6.2 | 修复: KV injection — sanitize_value 防换行注入 | Security | memory.rs 值转义, 143 tests |
 | v0.6.3 | Layer 2: auto-attack 融入 develop loop | Growth | BUILD/TEST 后自动攻击, 零 API 成本 |
 | v0.6.4 | 进程管理: proc-list (只读) | Growth | /proc 扫描 + ps fallback, IMMUTABLE_DENY 防杀守护进程 |
+| v0.6.5 | 攻击: Cargo.lock 版本篡改 | Security | lockfile 加入 CBSE hash, 6 文件受保护 |
 
 ### 元原则
 
