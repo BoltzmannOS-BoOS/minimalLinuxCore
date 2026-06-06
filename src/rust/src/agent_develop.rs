@@ -175,6 +175,7 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     ctx.push_str("\nRespond with ONE of these action formats:\n");
     ctx.push_str("  READ <filepath>           — read a source file\n");
     ctx.push_str("  WRITE <filepath> <content> — create/overwrite a file\n");
+    ctx.push_str("  FETCH <url>               — get HTTPS data from web\n");
     ctx.push_str("  BUILD                     — run cargo build\n");
     ctx.push_str("  TEST                      — run cargo test\n");
     ctx.push_str("  DONE <summary>            — task complete\n");
@@ -227,13 +228,28 @@ fn execute_develop_action(action: &str) -> String {
             Ok(()) => format!("WRITE ok: {} ({} bytes)", path, content.len()),
             Err(e) => format!("WRITE error: {}", e),
  }
-    } else if upper == "SELF-STATE" {
+    } else if upper.starts_with("FETCH") {
+        let url = action[6..].trim();
+        if url.is_empty() { return "FETCH: url required".to_string(); }
+        if !url.starts_with("https://") { return "FETCH: only HTTPS allowed".to_string(); }
+        match ureq::get(url).timeout(Duration::from_secs(10)).call() {
+            Ok(r) if r.status() == 200 => {
+                let mut body = String::new();
+                if r.into_reader().read_to_string(&mut body).is_ok() {
+                    let short = if body.len() > 1000 { &body[..1000] } else { &body };
+                    format!("FETCH ok ({} chars)\n[EXTERNAL] {}", body.len(), short)
+                } else { "FETCH: read error".to_string() }
+            }
+            Ok(r) => format!("FETCH: HTTP {}", r.status()),
+            Err(e) => format!("FETCH: {}", e),
+        }
+    } else if upper.starts_with("SELF-STATE") {
         return format!("session: agent-{} uptime: ok memory: ok attack: verified boundary: self", std::process::id());
-    } else if upper == "HEALTH-CHECK" {
+    } else if upper.starts_with("HEALTH-CHECK") {
         return "HEALTH: PASS (WARN count: 0)".to_string();
-    } else if upper == "IDENTITY" {
+    } else if upper.starts_with("IDENTITY") {
         return format!("session: agent-{} (boos-gateway: trusted, boos-supervisor: trusted)", std::process::id());
- } else if upper == "AUTO-ATTACK" {
+ } else if upper.starts_with("AUTO-ATTACK") {
  match std::process::Command::new("sh").args(["../tests/auto-attack.sh"]).output() {
      Ok(o) => {
          let out = String::from_utf8_lossy(&o.stdout);
@@ -245,7 +261,7 @@ fn execute_develop_action(action: &str) -> String {
      }
      Err(e) => format!("AUTO-ATTACK error: {}", e),
  }
- } else if upper == "BUILD" {
+ } else if upper.starts_with("BUILD") {
         // cd to src/rust if not already there
         let saved_dir = std::env::current_dir().ok();
         if !std::path::Path::new("Cargo.toml").exists() {
@@ -297,7 +313,7 @@ fn execute_develop_action(action: &str) -> String {
             let _ = std::env::set_current_dir(dir);
         }
         result
-    } else if upper == "TEST" {
+    } else if upper.starts_with("TEST") {
         let saved_dir = std::env::current_dir().ok();
         if !std::path::Path::new("Cargo.toml").exists() {
             let _ = std::env::set_current_dir("src/rust");
