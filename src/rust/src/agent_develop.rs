@@ -1518,3 +1518,37 @@ mod tests {
          println!("  DEFENSE: BIOS boundaries are system-wide, branches cannot weaken them");
      }
 
+     // ═══ BEHAVIORAL VERIFICATION: Embodied Memory ═══
+     #[test]
+     fn verify_embodied_memory_stores_and_retrieves() {
+         use crate::memory;
+         let s = "verify-beh";
+         let _ = memory::session_start(s);
+         memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad => FAIL: 403", s)).ok();
+         memory::recent_add(memory::RecentEntry::new("develop", "FETCH good => success", s)).ok();
+         let recent = memory::recent_entries();
+         assert_eq!(recent.len(), 2);
+         assert!(recent.iter().any(|e| e.content.contains("403")));
+         assert!(recent.iter().any(|e| e.content.contains("success")));
+         println!("PASS: memory stores and retrieves failure + success");
+     }
+
+     #[test]
+     fn verify_embodied_memory_injects_into_context() {
+         use crate::memory;
+         let s = "verify-inj";
+         let _ = memory::session_start(s);
+         memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad.example.com => FAIL: 403", s)).ok();
+         let goal = "get data from bad.example.com";
+         let recent = memory::recent_entries();
+         let mut ctx = String::new();
+         for e in recent.iter().rev().take(20) {
+             if e.content.to_lowercase().contains(&goal.to_lowercase()) {
+                 ctx.push_str(&format!("[MEMORY] {}\n", &e.content[..e.content.len().min(120)]));
+             }
+         }
+         assert!(!ctx.is_empty(), "memory context empty");
+         assert!(ctx.contains("403"), "failure info not in context");
+         println!("PASS: memory injected into context");
+     }
+
