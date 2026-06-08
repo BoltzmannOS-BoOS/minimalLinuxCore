@@ -297,7 +297,8 @@ BoOS 的开发过程本身就是 Seed → 每一轮攻击/防御都是 Refinemen
 | v0.8.1 | 躯体: health-check (homeostasis) | Body | agent 知道什么是健康 — WARN 注入上下文, CRITICAL 暂停循环 |
 | v0.8.2 | 躯体: identity (self/non-self) | Body | agent 知道我是谁 — session-id + trusted-cores + [EXTERNAL] 标记 |
 | v0.8.3 | 躯体: circadian (phase-rhythm) | Body | 8 轮循环: WORK→REFLECT→SELF_CHECK→IDLE |
-| v0.9.0 | 躯体: embodied memory | Body | 记忆主动搜索→注入决策回路。[MEMORY] tag + 3 entry cap + 120 char limit。躯体五步完成。 |
+| v0.9.0 | 躯体: embodied memory | Body | 记忆主动搜索→注入决策回路。躯体五步完成。 |
+| v0.9.1 | AI Git: checkpoint + branch + rollback | Growth | 每轮自动快照。BRANCH attack-* 触发攻击引擎。AgentGit 论文对照完成。 |
 
 ### Body Completion Map（躯体五步）
 
