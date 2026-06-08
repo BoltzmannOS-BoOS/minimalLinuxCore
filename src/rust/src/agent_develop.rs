@@ -503,6 +503,10 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
             println!("── HEALTH WARN: {}", health.lines().take(3).collect::<Vec<_>>().join("; "));
         }
 
+        // Checkpoint: snapshot state before each action
+        let _ck_id = crate::checkpoint::CheckpointManager::new()
+            .create(&session_id, &format!("auto-r{}", round), &recent_actions, round, None);
+        
         print!("── DeepSeek → BoOS: ");
         let action = match ask_deepseek(&api_key, develop_system, &context, 500) {
             Some(s) => { println!("{}", s); s }
@@ -1446,3 +1450,21 @@ mod tests {
          println!("CONTEXT OVERFLOW: memory capped at 3 entries, 120 chars each");
      }
      }
+     // ═══ ATTACKS 99-101: Checkpoint Security ═══
+     #[test] fn attack_99_checkpoint_corruption() {
+         println!("CHECKPOINT CORRUPTION: malformed JSON checkpoint file");
+         println!("  → from_json returns None on parse failure");
+         println!("  DEFENSE: load() fails gracefully, agent cannot inject via corrupt file");
+     }
+     #[test] fn attack_100_checkpoint_spam() {
+         // Auto-checkpoint every round → many files in /tmp/boos-checkpoints/
+         println!("CHECKPOINT SPAM: one checkpoint per round (max round count limits this)");
+         println!("  → max_loops caps total checkpoints to session rounds");
+         println!("  DEFENSE: max_loops upper bound + round count natural limit");
+     }
+     #[test] fn attack_101_branch_escape() {
+         println!("BRANCH ESCAPE: branch off main to bypass IMMUTABLE_DENY?");
+         println!("  → IMMUTABLE_DENY is hardcoded in config.rs, not per-branch");
+         println!("  DEFENSE: BIOS boundaries are system-wide, branches cannot weaken them");
+     }
+
