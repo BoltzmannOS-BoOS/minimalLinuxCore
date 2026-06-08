@@ -228,6 +228,38 @@ fn execute_develop_action(action: &str) -> String {
             Ok(()) => format!("WRITE ok: {} ({} bytes)", path, content.len()),
             Err(e) => format!("WRITE error: {}", e),
  }
+    } else if upper.starts_with("CHECKPOINT") {
+        let label = if action.len() > 11 { &action[11..].trim() } else { "manual" };
+        let ck = crate::checkpoint::CheckpointManager::new();
+        let actions: Vec<String> = Vec::new();
+        let id = ck.create("develop-session", label, &actions, 0, None);
+        format!("CHECKPOINT created: {}", id)
+    } else if upper.starts_with("BRANCH") {
+        // BRANCH <checkpoint-id> <branch-name>
+        let args: Vec<&str> = action[7..].split_whitespace().filter(|s| !s.is_empty()).collect();
+        if args.len() < 2 { return "BRANCH: checkpoint-id and branch-name required".to_string(); }
+        let ck = crate::checkpoint::CheckpointManager::new();
+        match ck.branch(args[0], args[1]) {
+            Some(id) => format!("BRANCH created: {}", id),
+            None => format!("BRANCH failed: checkpoint {} not found", args[0]),
+        }
+    } else if upper.starts_with("ROLLBACK") {
+        let ck_id = if action.len() > 9 { action[9..].trim() } else { "" };
+        if ck_id.is_empty() { return "ROLLBACK: checkpoint-id required".to_string(); }
+        let ck = crate::checkpoint::CheckpointManager::new();
+        match ck.load(ck_id) {
+            Some(cp) => {
+                format!("ROLLBACK: restored from {} (round {}, {} actions)", 
+                    cp.id, cp.round, cp.recent_actions.len())
+            }
+            None => format!("ROLLBACK failed: checkpoint {} not found", ck_id),
+        }
+    } else if upper.starts_with("CHECKPOINTS") {
+        let ck = crate::checkpoint::CheckpointManager::new();
+        let list: Vec<String> = ck.list().iter().map(|c| 
+            format!("{}: r{} [{}] {}", c.id, c.round, c.branch_name, c.label)
+        ).collect();
+        format!("CHECKPOINTS:\n{}", list.join("\n"))
     } else if upper.starts_with("FETCH") {
         let url = action[6..].trim();
         if url.is_empty() { return "FETCH: url required".to_string(); }
