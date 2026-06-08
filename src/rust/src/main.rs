@@ -2,6 +2,7 @@ use std::env;
 use std::path::Path;
 
 mod config;
+mod decision_gate;
 mod log;
 mod registry;
 mod submit;

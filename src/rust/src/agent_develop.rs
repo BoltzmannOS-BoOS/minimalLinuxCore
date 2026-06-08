@@ -420,6 +420,7 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     println!("╚══════════════════════════════════════════════╝");
 
     let mut recent_actions: Vec<String> = Vec::new();
+    let mut gate = crate::decision_gate::DecisionGate::new();
 
 
     // ── Circadian Rhythm: 8-round cycle ──────────────────────────────────
@@ -522,6 +523,9 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
             break;
         }
 
+        // Decision Gate: checkpoint before high-impact actions
+    let _dp = gate.intercept_before(&action, &recent_actions);
+        
         // Execute the action
         let result = execute_develop_action(&action);
         print!("── Result: ");
@@ -562,6 +566,10 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     println!("══════════════════════════════════════════════");
     println!("  Develop Session Complete");
     println!("  Actions taken: {}", recent_actions.len());
+    println!("  Decision points: {}", gate.decisions.len());
+    for dp in &gate.decisions {
+        println!("    {} [{}]", dp.id, if dp.reversible {"reversible"} else {"committed"});
+    }
     for action in &recent_actions {
         println!("    {}", action);
     }
