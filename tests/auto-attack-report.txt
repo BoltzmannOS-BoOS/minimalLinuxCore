@@ -1,9 +1,9 @@
 ═══ BoOS Auto-Attack Report ═══
-Timestamp: Fri  5 Jun 2026 15:20:40 CST
+Timestamp: Mon  8 Jun 2026 12:41:00 CST
 Patterns: 36 (29 blocked, 5 open)
 
 --- Attack Tests ---
-test result: ok. 76 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 0.07s
+test result: ok. 89 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 15.54s
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 --- Open Issues ---

@@ -178,7 +178,10 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     ctx.push_str("  FETCH <url>               — get HTTPS data from web\n");
     ctx.push_str("  BUILD                     — run cargo build\n");
     ctx.push_str("  TEST                      — run cargo test\n");
-    ctx.push_str("  DONE <summary>            — task complete\n");
+    ctx.push_str("  CHECKPOINTS               — list saved states
+  BRANCH <ck-id> <name>     — branch from checkpoint
+  ROLLBACK <ck-id>          — restore from checkpoint
+  DONE <summary>            — task complete\n");
     ctx.push_str("\nOnly respond with the action. No explanation, no markdown.\n");
 
     ctx
@@ -235,12 +238,27 @@ fn execute_develop_action(action: &str) -> String {
         let id = ck.create("develop-session", label, &actions, 0, None);
         format!("CHECKPOINT created: {}", id)
     } else if upper.starts_with("BRANCH") {
-        // BRANCH <checkpoint-id> <branch-name>
         let args: Vec<&str> = action[7..].split_whitespace().filter(|s| !s.is_empty()).collect();
         if args.len() < 2 { return "BRANCH: checkpoint-id and branch-name required".to_string(); }
         let ck = crate::checkpoint::CheckpointManager::new();
         match ck.branch(args[0], args[1]) {
-            Some(id) => format!("BRANCH created: {}", id),
+            Some(id) => {
+                let mut result = format!("BRANCH created: {}", id);
+                // Attack-evolve integration: if branch name starts with "attack", run in branch
+                if args[1].starts_with("attack") {
+                    match std::process::Command::new("sh")
+                        .args(["/Users/hostsjim/project/minimalLinuxCore/tests/auto-attack.sh"]).output() 
+                    {
+                        Ok(o) => {
+                            let out = String::from_utf8_lossy(&o.stdout);
+                            let status = if out.contains("0 failed") { "PASS" } else { "FAILURES" };
+                            result.push_str(&format!("\nBRANCH ATTACK: {} ({} chars)", status, out.len()));
+                        }
+                        Err(e) => result.push_str(&format!("\nBRANCH ATTACK error: {}", e)),
+                    }
+                }
+                result
+            }
             None => format!("BRANCH failed: checkpoint {} not found", args[0]),
         }
     } else if upper.starts_with("ROLLBACK") {
