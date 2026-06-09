@@ -22,7 +22,7 @@ BoOS:   AI 是操作者，OS 是身体，人是审查者
 | 14 | 能力前置于功能 | 加功能前先注册 IMMUTABLE_DENY + PROTECTED_DIRS |
 | 23 | AI 要服务，不要 syscall | agent 不该管 PID/fork/进程树。要服务级接口 |
 
-完整 SEED.md：23 条原则 + 5 条增长规则 + 4 条成本自指 + 裂脑模型 + 4 层开发升级模型。
+完整 SEED.md：项目全貌、架构、安全模型、开发约定。
 
 ---
 
@@ -37,7 +37,7 @@ BoOS:   AI 是操作者，OS 是身体，人是审查者
 | 3 | exec 白名单 | 运行未授权二进制 | 完整命令前缀检查 |
 | 4 | Prompt 隔离 | 指令注入 | goal 进 user message，system prompt 不可变 |
 | 5 | Write 上限 | 磁盘耗尽 | 64KB 硬上限 per write |
-| 6 | API key 隔离 | 密钥泄露 | 裂脑——gateway 代理，agent 无 key |
+| 6 | API key 隔离 | 密钥泄露 | Gateway 代理——agent 调用 DeepSeek 必须走 gateway，无 key 访问权限 |
 | 7 | CBSE 防御 | 编译时代码注入 | Cargo.toml + build.rs + Cargo.lock hash 三重验证 |
 
 ### 2.2 攻击副核心：自进化攻击系统（Layer 0→3）
@@ -51,17 +51,17 @@ Layer 3: attack-evolve.py（过滤 → 测试 → 报告 → 存档，持续自�
 
 最近一次进化报告：48 组合测试，0 OPEN，7 层防线全部守住。
 
-### 2.3 架构：裂脑模型
+### 2.3 架构：Gateway 代理隔离
 
 ```
-左脑（agent playground）               右脑（gateway kernel）
+Agent 进程（boos-agent 用户）          Gateway 进程（boos-gateway 用户）
 ┌──────────────────────┐             ┌──────────────────────┐
 │ 可读写：/var /tmp      │  submit     │ 持有：API key          │
 │ 可执行：cargo build     │ ←────────→ │ 管理：capabilities    │
 │ 可探索：文件系统        │  result    │ 审计：results         │
 │ 可读不可写：/etc 等    │             │ 记忆：memory          │
-│ 可以坏掉、重置          │  DEEPSEEK  │ 不能崩，出厂焊死       │
-│ boos-agent 用户         │  FETCH     │ boos-gateway 用户     │
+│ 可以坏掉、重置          │  DEEPSEEK  │ 不共享 secret，不崩     │
+│                        │  FETCH     │                      │
 └──────────────────────┘             └──────────────────────┘
 ```
 
@@ -99,7 +99,7 @@ AI 应该说"让 3 个 worker 并行检查所有源文件的安全性"，而不�
 ```
 当前: agent 一个人干活
 期望: agent 分配任务给子 agent，回收结果
-挑战: 子 agent 的安全边界在哪？裂脑模型怎么推广到 N 个 agent？
+挑战: 子 agent 的安全边界在哪？gateway 代理模型怎么推广到 N 个 agent？
 ```
 
 ### Q2: 持久任务 + 定时
@@ -143,8 +143,8 @@ agent 应该说"这个 RSS 有更新就通知我"，而不是用 FETCH 轮询。
 
 ```
 当前: 只有一个 agent（develop loop）
-期望: 多个独立 agent 通过右脑通信，不共享左脑状态
-挑战: 裂脑*N 的复杂度会爆炸吗？
+期望: 多个独立 agent 通过 gateway 通信，不共享 agent 状态
+挑战: gateway 代理 × N 的复杂度会爆炸吗？
 ```
 
 ### Q7: 你还能想到什么？
@@ -174,9 +174,9 @@ docs/attack-research.md    ← 真实世界攻击研究
 docs/development-layers.md ← Factorio 式 Layer 0→3 模型
 tests/attack-knowledge.md   ← 攻击原语 + 组合算子
 src/rust/src/config.rs     ← BIOS IMMUTABLE_DENY + PROTECTED_DIRS
-src/rust/src/gateway.rs    ← 裂脑右脑（DEEPSEEK + FETCH 协议）
+src/rust/src/gateway.rs    ← Gateway 进程（DEEPSEEK + FETCH 协议代理）
 src/rust/src/agent_develop.rs ← 开发循环 + 85 个攻击测试
-rootfs/init                ← 启动脚本（裂脑用户 + chmod 隔离）
+rootfs/init                ← 启动脚本（用户隔离 + chmod 隔离）
 ```
 
 ---

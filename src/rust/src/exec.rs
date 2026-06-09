@@ -421,152 +421,10 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         }
         "__builtin_prune" => prune_results(args),
         "__builtin_rotate_logs" => rotate_logs_cmd(),
-        // ── New: file operations and execution ──
-        "__builtin_read_file" => {
-            let path = args.trim();
-            if path.is_empty() {
-                eprintln!("Usage: read-file <path>");
-                EXIT_ERROR
-            } else {
-                match std::fs::read_to_string(path) {
-                    Ok(content) => {
-                        println!("{}", content);
-                        EXIT_ALLOWED
-                    }
-                    Err(e) => {
-                        eprintln!("read-file: {}", e);
-                        EXIT_ERROR
-                    }
-                }
-            }
-        }
-        "__builtin_exec" => {
-            let args_trimmed = args.trim();
-            if args_trimmed.is_empty() {
-                eprintln!("Usage: exec <binary> [args...]");
-                return EXIT_ERROR;
-            }
-            let parts: Vec<&str> = args_trimmed.split_whitespace().collect();
-            let cmd = parts[0];
-            // BIOS: check full command against allowlist prefixes
-            let full_cmd = args_trimmed;
-            let allowed = config::EXEC_ALLOWLIST.iter().any(|prefix| full_cmd.starts_with(prefix));
-            if !allowed {
-                eprintln!("exec: '{}' is not in the exec allowlist (BIOS restriction)", full_cmd);
-                return EXIT_DENIED;
-            }
-            let cmd_args = &parts[1..];
-            match process::Command::new(cmd).args(cmd_args).status() {
-                Ok(s) => s.code().unwrap_or(EXIT_ERROR),
-                Err(e) => {
-                    eprintln!("exec: {}", e);
-                    EXIT_ERROR
-                }
-            }
-        }
-        "__builtin_write_file" => {
-            let args_trimmed = args.trim();
-            if args_trimmed.is_empty() {
-                eprintln!("Usage: write-file <path> <content>");
-                return EXIT_ERROR;
-            }
-            let space_pos = match args_trimmed.find(|c: char| c.is_whitespace()) {
-                Some(p) => p,
-                None => {
-                    eprintln!("Usage: write-file <path> <content>");
-                    return EXIT_ERROR;
-                }
-            };
-            let path = args_trimmed[..space_pos].trim();
-            let content = args_trimmed[space_pos..].trim();
-            if path.is_empty() || content.is_empty() {
-                eprintln!("Usage: write-file <path> <content>");
-                return EXIT_ERROR;
-            }
-            // BIOS: reject writes to protected system directories
-            if config::is_protected_path(path) {
-                eprintln!("write-file: '{}' is a protected system path (BIOS restriction)", path);
-                return EXIT_DENIED;
-            }
-            // Create parent directories if needed
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                if !parent.as_os_str().is_empty() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-            }
-            match std::fs::write(path, content) {
-                Ok(()) => {
-                    println!("Written: {} ({} bytes)", path, content.len());
-                    EXIT_ALLOWED
-                }
-                Err(e) => {
-                    eprintln!("write-file: {}", e);
-                    EXIT_ERROR
-                }
-            }
-        }
-        "__builtin_list_dir" => {
-            let path = args.trim();
-            let dir_path = if path.is_empty() { "." } else { path };
-            match std::fs::read_dir(dir_path) {
-                Ok(entries) => {
-                    let mut list: Vec<_> = entries
-                        .filter_map(|e| e.ok())
-                        .collect();
-                    list.sort_by_key(|e| e.file_name());
-                    println!("Directory: {}", dir_path);
-                    for entry in &list {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let file_type = match entry.file_type() {
-                            Ok(ft) if ft.is_dir() => "d",
-                            Ok(ft) if ft.is_symlink() => "l",
-                            Ok(_) => "-",
-                            Err(_) => "?",
-                        };
-                        let size = entry.metadata()
-                            .map(|m| m.len())
-                            .unwrap_or(0);
-                        println!("  {} {:>8} {}", file_type, size, name);
-                    }
-                    println!("  ({} entries)", list.len());
-                    EXIT_ALLOWED
-                }
-                Err(e) => {
-                    eprintln!("list-dir: {}", e);
-                    EXIT_ERROR
-                }
-            }
-        }
-        "__builtin_stat" => {
-            let path = args.trim();
-            if path.is_empty() {
-                eprintln!("Usage: stat <path>");
-                return EXIT_ERROR;
-            }
-            match std::fs::metadata(path) {
-                Ok(m) => {
-                    let ftype = if m.is_dir() { "directory" }
-                        else if m.is_symlink() { "symlink" }
-                        else if m.is_file() { "file" }
-                        else { "other" };
-                    println!("File: {}", path);
-                    println!("  Type: {}", ftype);
-                    println!("  Size: {} bytes", m.len());
-                    use std::os::unix::fs::PermissionsExt;
-                    println!("  Permissions: {:o}", m.permissions().mode() & 0o777);
-                    if let Ok(mtime) = m.modified() {
-                        if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                            println!("  Modified: {} (epoch)", dur.as_secs());
-                        }
-                    }
-                    EXIT_ALLOWED
-                }
-                Err(e) => {
-                    eprintln!("stat: {}", e);
-                    EXIT_ERROR
-                }
-            }
-        }
+        // ── File operations → exec_file.rs ──
+        _ => match crate::exec_file::run_file_builtin(exec_target, args) {
+            Some(code) => code,
+            None => match exec_target {
         "__builtin_audit" => audit_cmd(args),
         "__builtin_reset" => reset_cmd(),
         // ── Agent memory builtins ─────────────────────────────────────────
@@ -588,6 +446,8 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         _ => {
             eprintln!("Unknown builtin: {}", exec_target);
             EXIT_ERROR
+        }
+            }
         }
     }
 }

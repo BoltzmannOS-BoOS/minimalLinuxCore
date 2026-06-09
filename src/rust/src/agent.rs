@@ -400,17 +400,12 @@ pub fn main() {
 
     // Check for loop subcommand (autonomous DeepSeek agent)
     if args.len() >= 2 && args[1] == "loop" {
-        let mut api_key: Option<String> = None;
         let mut goal = "探索BoOS并了解它的能力".to_string();
         let mut max_loops = 30u32;
         let mut prior_knowledge: Option<String> = None;
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
-                "--api-key" => {
-                    i += 1;
-                    if i < args.len() { api_key = Some(args[i].clone()); }
-                }
                 "--goal" => {
                     i += 1;
                     if i < args.len() { goal = args[i].clone(); }
@@ -427,7 +422,7 @@ pub fn main() {
             }
             i += 1;
         }
-        crate::agent_loop::run_loop(api_key.as_deref(), &goal, max_loops, prior_knowledge.as_deref());
+        crate::agent_loop::run_loop(&goal, max_loops, prior_knowledge.as_deref());
         return;
     }
 
@@ -492,7 +487,7 @@ pub fn main() {
                 ("error", &e.to_string()),
             ]);
             eprintln!("Failed to start gateway: {}", e);
-            std::process::exit(1);
+            std::process::exit(config::EXIT_ERROR);
         }
     };
 

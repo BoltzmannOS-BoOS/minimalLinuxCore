@@ -1,115 +1,33 @@
-use std::io::Read;
 use std::process::Command;
 use std::time::Duration;
 
 use crate::memory;
 use crate::registry;
 
-const DEEPSEEK_API: &str = "https://api.deepseek.com/v1/chat/completions";
 const LOOP_DELAY_MS: u64 = 1000;
-const API_KEY_FILE: &str = "/etc/boos/agent.conf";
 
-fn load_api_key() -> Option<String> {
-    if let Ok(data) = std::fs::read_to_string(API_KEY_FILE) {
-        for line in data.lines() {
-            let line = line.trim();
-            if let Some(val) = line.strip_prefix("api_key=") {
-                let key = val.trim();
-                if !key.is_empty() {
-                    return Some(key.to_string());
-                }
-            }
-        }
-    }
-    None
+fn ask_deepseek(system_prompt: &str, context: &str) -> Option<String> {
+    gateway_ask(system_prompt, context)
 }
 
-fn json_escape_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn extract_content(body: &str) -> Option<String> {
-    // Find "content":"
-    if let Some(pos) = body.find(r#""content":""#) {
-        let start_byte = pos + 11; // len of "content":"
-        let rest = &body[start_byte..];
-        // Find closing unescaped quote, handling UTF-8 properly
-        let mut end_byte = 0;
-        let bytes = rest.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                i += 2; // skip escaped char
-            } else if bytes[i] == b'"' {
-                end_byte = i;
-                break;
-            } else {
-                i += 1;
-            }
-        }
-        let raw = &rest[..end_byte];
-        let content = String::from_utf8_lossy(raw.as_bytes()).to_string()
-            .replace("\\n", "\n")
-            .replace("\\t", "\t")
-            .replace("\\r", "\r")
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\");
-        Some(content.trim().to_string())
-    } else {
-        None
-    }
-}
-
-fn ask_deepseek(api_key: &str, system_prompt: &str, context: &str, max_tokens: u32) -> Option<String> {
-    let escaped_system = json_escape_str(system_prompt);
-    let escaped_user = json_escape_str(context);
-    let body = format!(
-        r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":{},"stream":false}}"#,
-        escaped_system, escaped_user, max_tokens
-    );
-
-    let response = ureq::post(DEEPSEEK_API)
-        .set("Authorization", &format!("Bearer {}", api_key))
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_string(&body);
-
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            let mut resp_body = String::new();
-            if resp.into_reader().read_to_string(&mut resp_body).is_ok() {
-                if status != 200 {
-                    eprintln!("  [HTTP {}] {}", status, truncate_utf8(&resp_body, 200));
-                    return None;
-                }
-                extract_content(&resp_body)
-            } else {
-                eprintln!("  [read error]");
-                None
-            }
-        }
-        Err(e) => {
-            eprintln!("  [API error: {}]", e);
-            None
-        }
-    }
+fn gateway_ask(system_prompt: &str, context: &str) -> Option<String> {
+    use std::io::{Write, BufRead, BufReader};
+    let mut stream = std::net::TcpStream::connect("127.0.0.1:5555").ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(35)));
+    let _ = writeln!(stream, "DEEPSEEK");
+    let _ = writeln!(stream, "{}", system_prompt);
+    let _ = writeln!(stream, "{}", context);
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_line(&mut response).ok()?;
+    let resp = response.trim().to_string();
+    if resp.starts_with("GATEWAY:") { eprintln!("  [{}]", resp); return None; }
+    if resp.is_empty() { return None; }
+    Some(resp.replace("\\\\", "\\").replace("\\n", "\n").replace("\\\"", "\""))
 }
 
 /// Safely truncate a UTF-8 string at a character boundary.
-fn truncate_utf8(s: &str, max_chars: usize) -> String {
+pub fn truncate_utf8(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         return s.to_string();
     }
@@ -214,18 +132,7 @@ fn execute_suggestion(cmd_line: &str) -> String {
     }
 }
 
-pub fn run_loop(api_key: Option<&str>, goal: &str, max_loops: u32, prior_knowledge: Option<&str>) {
-    let api_key = match api_key {
-        Some(k) if !k.is_empty() => k.to_string(),
-        _ => match load_api_key() {
-            Some(k) => k,
-            None => {
-                eprintln!("No API key. Set api_key=sk-xxx in {}", API_KEY_FILE);
-                return;
-            }
-        }
-    };
-
+pub fn run_loop(goal: &str, max_loops: u32, prior_knowledge: Option<&str>) {
     let session_id = format!("agent-loop-{}", memory::now_secs());
     let _ = memory::session_start(&session_id);
     if let Ok(mut wm) = memory::WorkingMemory::load() {
@@ -288,7 +195,7 @@ pub fn run_loop(api_key: Option<&str>, goal: &str, max_loops: u32, prior_knowled
         }
 
         print!("── DeepSeek → BoOS: ");
-        let suggestion = match ask_deepseek(&api_key, &explore_prompt, &context, 300) {
+        let suggestion = match ask_deepseek(&explore_prompt, &context) {
             Some(s) => { println!("{}", s); s }
             None => {
                 println!("(API error, retry 5s)");
@@ -341,25 +248,13 @@ pub fn run_loop(api_key: Option<&str>, goal: &str, max_loops: u32, prior_knowled
     println!("  DeepSeek 自主分析报告");
     println!("══════════════════════════════════════════════");
 
-    let _report_prompt = format!(
-        "你刚完成了 BoOS 探索。以下是探索记录:\n{}\n\n\
-         写一份中文报告:\n\
-         1. BoOS 是什么?\n\
-         2. 它能够做什么? (只写实际观察到的)\n\
-         3. 它不能做什么? (发现的缺口)\n\
-         4. 什么让你意外?\n\
-         5. 下一步应该加什么功能?",
-        all_interactions.join("\n")
-    );
-
-    let _report_sys = "你是一个刚刚探索了 BoOS 的 AI。写一份诚实的中文报告。只报告你实际观察到的。";
     let (report_ctx, _) = build_context();
     let final_ctx = format!("探索记录:\n{}\n\n当前状态:\n{}",
         all_interactions.join("\n"), report_ctx);
 
     print!("  Asking DeepSeek... ");
     let report_sys = "You are an AI that explored BoOS. Write an honest report in Chinese. Only report what you actually observed.";
-    match ask_deepseek(&api_key, report_sys, &final_ctx, 2000) {
+    match ask_deepseek(report_sys, &final_ctx) {
         Some(report) => {
             println!();
             println!("{}", report);

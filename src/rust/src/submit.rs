@@ -48,7 +48,7 @@ fn wait_for_result(id: &str, timeout_secs: u64) {
                 .lines()
                 .find(|l| l.starts_with("exit_code="))
                 .and_then(|l| l["exit_code=".len()..].parse::<i32>().ok())
-                .unwrap_or(1);
+                .unwrap_or(config::EXIT_ERROR);
 
             // Print everything after the "---" delimiter
             if let Some(pos) = content.find("\n---\n") {
@@ -59,7 +59,7 @@ fn wait_for_result(id: &str, timeout_secs: u64) {
 
         if Instant::now() > deadline {
             eprintln!("Timeout waiting for result {}", id);
-            process::exit(1);
+            process::exit(config::EXIT_ERROR);
         }
 
         std::thread::sleep(Duration::from_millis(100));
@@ -91,7 +91,7 @@ pub fn main() {
 
     if cmd_parts.is_empty() {
         eprintln!("Usage: boos-submit [--wait] [-t SECS] <command> [args...]");
-        process::exit(1);
+        process::exit(config::EXIT_ERROR);
     }
 
     let cmd = cmd_parts[0];
@@ -142,7 +142,7 @@ pub fn main() {
                 attempt += 1;
                 if attempt > 10 {
                     eprintln!("Failed to create request file after {} attempts", attempt);
-                    process::exit(1);
+                    process::exit(config::EXIT_ERROR);
                 }
                 // If tmp_path also exists, unlink and retry (broken retry from
                 // a previous crashed process could leave tmp_path behind).

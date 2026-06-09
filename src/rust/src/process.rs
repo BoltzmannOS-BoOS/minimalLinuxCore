@@ -67,7 +67,7 @@ fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
     let status = child.wait().unwrap_or_else(|_| {
         process::ExitStatus::from_raw(0x0100) // exit code 1 in raw wait status
     });
-    let exit_code = status.code().unwrap_or(1);
+    let exit_code = status.code().unwrap_or(config::EXIT_ERROR);
 
     // Combine stdout and stderr
     let mut output = String::from_utf8_lossy(&stdout_buf).to_string();
@@ -212,21 +212,12 @@ pub fn main() {
             ));
         }
 
-        // Build full command: cmd + args (space-separated for boos-exec)
-        let full_cmd = if args.is_empty() {
-            cmd.clone()
-        } else {
-            format!("{} {}", cmd, args)
-        };
-        let cmd_parts: Vec<&str> = full_cmd.split_whitespace().collect();
-        let exec_cmd = cmd_parts.first().map(|s| *s).unwrap_or("help");
-        let exec_args = &cmd_parts[1..];
-
-        let (output, exit_code, _truncated) = capture_output("/bin/boos-exec", &{
-            let mut v = vec![exec_cmd];
-            v.extend_from_slice(exec_args);
-            v
-        });
+        // Pass cmd as first arg, remaining args split by whitespace.
+        // Avoids: format!("{} {}", cmd, args) → split_whitespace (Bug: destroys
+        // spacing if args were originally multi-word).
+        let mut exec_vec = vec![cmd.as_str()];
+        exec_vec.extend(args.split_whitespace());
+        let (output, exit_code, _truncated) = capture_output("/bin/boos-exec", &exec_vec);
 
         let finished_at = log::uptime_secs();
         let duration = log::duration_ms(started_at, finished_at);

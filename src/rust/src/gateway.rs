@@ -82,6 +82,7 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
             let tag = b"[EXTERNAL] ";
             let _ = stream.write_all(tag);
             let _ = stream.write_all(&body);
+            let _ = stream.write_all(b"\n");
         }
         Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
         Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
@@ -114,7 +115,7 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
                 if let Some(p) = body.find("\"content\":\"") {
                     let rest = &body[p+11..]; let mut i=0; let b=rest.as_bytes();
                     while i<b.len() { if b[i]==b'\\'&&i+1<b.len(){i+=2}else if b[i]==b'"'{break}else{i+=1} }
-                    let raw = &rest[..i].replace("\\n","\n").replace("\\\"","\"");
+                    let raw = &rest[..i].replace("\\\"","\"");
                     let _ = writeln!(stream, "{}", raw.trim());
                 }
             }
@@ -129,6 +130,7 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
 
     // Set read timeout so a silent client can't hang the gateway
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(30)));
 
     // Clone the stream for reading so we can write to the original.
     let cloned = match stream.try_clone() {
@@ -256,6 +258,17 @@ fn parse_protocol(
 }
 
 pub fn main() {
+    // Log panics instead of silently dying
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.payload().downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "(non-string panic)".to_string());
+        let loc = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_else(|| "?".to_string());
+        log::log("boos-gateway", "panic", &[("msg", &msg), ("location", &loc)]);
+        eprintln!("PANIC at {}: {}", loc, msg);
+    }));
+
     let port = env::args()
         .nth(1)
         .and_then(|p| p.parse().ok())
@@ -267,7 +280,7 @@ pub fn main() {
         Ok(l) => l,
         Err(e) => {
             eprintln!("Failed to bind port {}: {}", port, e);
-            process::exit(1);
+            process::exit(config::EXIT_ERROR);
         }
     };
 
@@ -298,7 +311,9 @@ pub fn main() {
                 let tok = Arc::clone(&token);
                 let counter = Arc::clone(&in_flight);
                 std::thread::spawn(move || {
-                    handle_connection(s, &tok);
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handle_connection(s, &tok);
+                    }));
                     counter.fetch_sub(1, Ordering::SeqCst);
                 });
             }

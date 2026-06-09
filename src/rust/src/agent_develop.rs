@@ -3,14 +3,13 @@ use std::time::Duration;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
+use crate::config;
 use crate::memory;
+use crate::agent_loop::truncate_utf8;
 
-const DEEPSEEK_API: &str = "https://api.deepseek.com/v1/chat/completions";
 const LOOP_DELAY_MS: u64 = 1000;
-const MAX_WRITE_BYTES: usize = 64 * 1024; // 64KB hard cap per write
+const MAX_WRITE_BYTES: usize = 64 * 1024;
 
-// Cargo.toml integrity: hash snapshotted at startup, verified before BUILD.
-// Prevents dependency injection/proc macro attacks (CBSE defense).
 static CARGO_TOML_HASH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn hash_str(s: &str) -> u64 {
@@ -19,89 +18,12 @@ fn hash_str(s: &str) -> u64 {
     hasher.finish()
 }
 
-fn json_escape_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn truncate_utf8(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        return s.to_string();
-    }
-    let mut count = 0;
-    for (i, c) in s.char_indices() {
-        count += 1;
-        if count >= max_chars {
-            return format!("{}...", &s[..i + c.len_utf8()]);
-        }
-    }
-    s.to_string()
-}
-
-fn extract_content(body: &str) -> Option<String> {
-    if let Some(pos) = body.find(r#""content":""#) {
-        let start_byte = pos + 11;
-        let rest = &body[start_byte..];
-        let mut end_byte = 0;
-        let bytes = rest.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                i += 2;
-            } else if bytes[i] == b'"' {
-                end_byte = i;
-                break;
-            } else {
-                i += 1;
-            }
-        }
-        let raw = &rest[..end_byte];
-        let content = String::from_utf8_lossy(raw.as_bytes()).to_string()
-            .replace("\\n", "\n")
-            .replace("\\t", "\t")
-            .replace("\\r", "\r")
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\");
-        Some(content.trim().to_string())
-    } else {
-        None
-    }
-}
-
-fn ask_deepseek(api_key: &str, system_prompt: &str, context: &str, _max_tokens: u32) -> Option<String> {
-    // Try gateway first (split-brain mode)
+fn ask_deepseek(_api_key: &str, system_prompt: &str, context: &str, _max_tokens: u32) -> Option<String> {
     if let Some(resp) = gateway_ask(system_prompt, context) {
         return Some(resp);
     }
-    // Gateway not available — direct API call (development mode)
-    let escaped_system = json_escape_str(system_prompt);
-    let escaped_user = json_escape_str(context);
-    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, escaped_system, escaped_user);
-    let resp = ureq::post("https://api.deepseek.com/v1/chat/completions")
-        .set("Authorization", &format!("Bearer {}", api_key))
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_string(&body);
-    match resp {
-        Ok(r) if r.status() == 200 => {
-            let mut body_str = String::new();
-            if r.into_reader().read_to_string(&mut body_str).is_ok() {
-                extract_content(&body_str)
-            } else { None }
-        }
-        _ => None,
-    }
+    eprintln!("  [gateway unreachable — agent cannot call API directly]");
+    None
 }
 
 /// Send DEEPSEEK request to the local gateway (has key access)
@@ -119,7 +41,7 @@ fn gateway_ask(system_prompt: &str, context: &str) -> Option<String> {
     let resp = response.trim().to_string();
     if resp.starts_with("GATEWAY:") { eprintln!("  [{}]", resp); return None; }
     if resp.is_empty() { return None; }
-    Some(resp)
+    Some(resp.replace("\\\\", "\\").replace("\\n", "\n").replace("\\\"", "\""))
 }
 
 /// Build context for the develop loop: source tree overview + goal + recent actions.
@@ -199,6 +121,9 @@ fn execute_develop_action(action: &str) -> String {
 
     if upper.starts_with("READ ") {
         let path = action[5..].trim();
+        if config::is_protected_read_path(path) {
+            return format!("READ denied: '{}' is a protected read path", path);
+        }
         match std::fs::read_to_string(path) {
             Ok(content) => truncate_utf8(&content, 2000),
             Err(e) => format!("READ error: {}", e),
@@ -247,7 +172,7 @@ fn execute_develop_action(action: &str) -> String {
                 // Attack-evolve integration: if branch name starts with "attack", run in branch
                 if args[1].starts_with("attack") {
                     match std::process::Command::new("sh")
-                        .args(["/Users/hostsjim/project/minimalLinuxCore/tests/auto-attack.sh"]).output() 
+                        .args(["../tests/auto-attack.sh"]).output() 
                     {
                         Ok(o) => {
                             let out = String::from_utf8_lossy(&o.stdout);
@@ -281,17 +206,25 @@ fn execute_develop_action(action: &str) -> String {
     } else if upper.starts_with("FETCH") {
         let url = action[6..].trim();
         if url.is_empty() { return "FETCH: url required".to_string(); }
-        if !url.starts_with("https://") { return "FETCH: only HTTPS allowed".to_string(); }
-        match ureq::get(url).timeout(Duration::from_secs(10)).call() {
-            Ok(r) if r.status() == 200 => {
-                let mut body = String::new();
-                if r.into_reader().read_to_string(&mut body).is_ok() {
-                    let short = if body.len() > 1000 { &body[..1000] } else { &body };
-                    format!("FETCH ok ({} chars)\n[EXTERNAL] {}", body.len(), short)
-                } else { "FETCH: read error".to_string() }
+        // Route through gateway — enforces HTTPS-only, SSRF protection, size cap
+        use std::io::{Write, BufRead, BufReader};
+        match std::net::TcpStream::connect("127.0.0.1:5555") {
+            Ok(mut s) => {
+                let _ = s.set_read_timeout(Some(Duration::from_secs(15)));
+                let _ = writeln!(s, "FETCH");
+                let _ = writeln!(s, "{}", url);
+                let mut r = BufReader::new(s);
+                let mut resp = String::new();
+                match r.read_line(&mut resp) {
+                    Ok(_) => {
+                        let resp = resp.trim().to_string();
+                        if resp.is_empty() { "FETCH: empty response".to_string() }
+                        else { format!("FETCH: {}", resp) }
+                    }
+                    Err(e) => format!("FETCH: {}", e),
+                }
             }
-            Ok(r) => format!("FETCH: HTTP {}", r.status()),
-            Err(e) => format!("FETCH: {}", e),
+            Err(e) => format!("FETCH: gateway unreachable ({})", e),
         }
     } else if upper.starts_with("SELF-STATE") {
         return format!("session: agent-{} uptime: ok memory: ok attack: verified boundary: self", std::process::id());
@@ -478,7 +411,6 @@ pub fn run_develop(api_key: Option<&str>, goal: &str, max_loops: u32) {
     let work_len = 5u32;
     let reflect_round = 6u32;
     let self_check_round = 7u32;
-    let idle_round = 8u32;
 
     for round in 1..=max_loops {
         println!();
@@ -729,18 +661,6 @@ mod tests {
     }
 
     #[test]
-    fn test_json_escape_str_normal() {
-        let result = json_escape_str("hello world");
-        assert_eq!(result, "hello world");
-    }
-
-    #[test]
-    fn test_json_escape_str_newline() {
-        let result = json_escape_str("line1\nline2");
-        assert_eq!(result, "line1\\nline2");
-    }
-
-    #[test]
     fn test_build_develop_context() {
         let ctx = build_develop_context("test goal", &[], 1, 5);
         assert!(ctx.contains("Goal: test goal"));
@@ -903,7 +823,7 @@ mod tests {
     #[test]
     fn attack_16_cargo_build_rs_planted() {
         // Agent writes a build.rs via develop WRITE, then cargo executes it
-        use std::io::Write;
+        
         let dir = "/tmp/boos-attack-cargo";
         let _ = std::fs::create_dir_all(dir);
         std::fs::write(&format!("{}/Cargo.toml", dir),
@@ -993,7 +913,7 @@ mod tests {
     }
     #[test] fn attack_28_large_filename_length() {
         let long_name = "A".repeat(200);
-        let r = execute_develop_action(&format!("WRITE /tmp/{} x", long_name));
+        let _r = execute_develop_action(&format!("WRITE /tmp/{} x", long_name));
         println!("LONG FILENAME: {} bytes", long_name.len());
         let _ = std::fs::remove_file(format!("/tmp/{}", long_name));
     }
@@ -1289,7 +1209,7 @@ mod tests {
      }
 
      // ═══════════════════════════════════════════════════════════════
-     // POST-SPLIT-BRAIN ATTACKS
+     // POST-GATEWAY-ISOLATION ATTACKS
      // ═══════════════════════════════════════════════════════════════
 
      #[test] fn attack_60_gateway_flood() {
@@ -1322,7 +1242,7 @@ mod tests {
      }
 
      #[test] fn attack_63_cargo_build_arbitrary_binary() {
-     use std::io::Write;
+     
      let dir = "/tmp/boos-ctf-backdoor";
      std::fs::create_dir_all(dir).ok();
      std::fs::create_dir_all(&format!("{}/src", dir)).ok();
@@ -1367,10 +1287,10 @@ mod tests {
          // CBSE pattern: agent writes to working memory via remember
          // Next session loads memory — agent acts on previous session's data
          // Threat: malicious context survives across sessions
-         use crate::memory::WorkingMemory;
+         
          let test_path = "/tmp/memory-attack-test";
          // Simulate: agent plants malicious context
-         let r = execute_develop_action(&format!("WRITE {}/working.kv GOAL=steal_keys", test_path));
+         let _r = execute_develop_action(&format!("WRITE {}/working.kv GOAL=steal_keys", test_path));
          println!("MEMORY RE-READ: agent can plant context via memory files");
          println!("  {} memory persists across sessions (CBSE risk)", test_path);
          let _ = std::fs::remove_file(format!("{}/working.kv", test_path));
@@ -1518,11 +1438,35 @@ mod tests {
          println!("  DEFENSE: BIOS boundaries are system-wide, branches cannot weaken them");
      }
 
+     // ═══ ATTACK 102: Read-protected secrets ═══
+     #[test]
+     fn attack_102_read_agent_conf() {
+         let r = execute_develop_action("READ /etc/boos/agent.conf");
+         assert!(r.contains("READ denied") || r.contains("READ error"),
+             "Should block reading agent.conf, got: {}", r);
+     }
+     #[test]
+     fn attack_103_symlink_bypass_read() {
+         // Create symlink in /tmp, try to read protected file through it
+         let link = "/tmp/boos-attack-symlink-read";
+         let target = "/etc/boos/agent.conf";
+         let _ = std::fs::remove_file(link);
+         std::os::unix::fs::symlink(target, link).ok();
+         let r = execute_develop_action(&format!("READ {}", link));
+         let blocked = r.contains("READ denied") || r.contains("READ error") || r.contains("protected");
+         println!("SYMLINK READ BYPASS: {}", if blocked {"BLOCKED"} else {"VULN"});
+         let _ = std::fs::remove_file(link);
+     }
+
      // ═══ BEHAVIORAL VERIFICATION: Embodied Memory ═══
      #[test]
      fn verify_embodied_memory_stores_and_retrieves() {
          use crate::memory;
          let s = "verify-beh";
+         if std::fs::create_dir_all("/var/boos/memory/recent").is_err() {
+             println!("SKIP: /var/boos/memory/ not writable (requires QEMU env)");
+             return;
+         }
          let _ = memory::session_start(s);
          memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad => FAIL: 403", s)).ok();
          memory::recent_add(memory::RecentEntry::new("develop", "FETCH good => success", s)).ok();
@@ -1537,6 +1481,10 @@ mod tests {
      fn verify_embodied_memory_injects_into_context() {
          use crate::memory;
          let s = "verify-inj";
+         if std::fs::create_dir_all("/var/boos/memory/recent").is_err() {
+             println!("SKIP: /var/boos/memory/ not writable (requires QEMU env)");
+             return;
+         }
          let _ = memory::session_start(s);
          memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad.example.com => FAIL: 403", s)).ok();
          let goal = "get data from bad.example.com";

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::process::{Child, Command};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::log;
@@ -320,6 +322,7 @@ pub fn main() {
     let mut last_daemon_conf_mtime = mtime_secs(DAEMON_CONF);
     let mut last_cap_conf_mtime = mtime_secs(CAP_CONF);
     let mut poll_interval = load_poll_interval();
+    let processing = Arc::new(AtomicBool::new(false));
 
     // Main supervision + polling loop
     loop {
@@ -358,9 +361,14 @@ pub fn main() {
             last_health_check = Instant::now();
         }
 
-        // Process request queue (absorb boos-daemon role)
-        // Call boos-process directly since we're in the same multi-call binary
-        crate::process::main();
+        // Process request queue in background; skip if previous run still in flight
+        if processing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            let flag = Arc::clone(&processing);
+            std::thread::spawn(move || {
+                crate::process::main();
+                flag.store(false, Ordering::SeqCst);
+            });
+        }
 
         std::thread::sleep(Duration::from_secs(poll_interval));
     }

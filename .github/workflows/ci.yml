@@ -1,0 +1,84 @@
+name: BoOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Fast path: host build + unit tests ──────────────────────────────
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: cargo test
+        run: cargo test
+        working-directory: src/rust
+
+  # ── Check release build with zero warnings ──────────────────────────
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: cargo build --release
+        run: cargo build --release 2>&1 | tee /tmp/build.log
+        working-directory: src/rust
+      - name: verify zero warnings
+        run: |
+          if grep -q 'warning:' /tmp/build.log; then
+            echo "BUILD HAS WARNINGS:"
+            grep 'warning:' /tmp/build.log
+            exit 1
+          fi
+          echo "Zero warnings."
+
+  # ── Docker musl cross-compile + QEMU integration test ───────────────
+  integration:
+    runs-on: ubuntu-latest
+    needs: [unit-tests, release-build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 cpio gzip netcat-openbsd wget
+
+      - name: Download Alpine virt kernel
+        run: |
+          mkdir -p build
+          wget -q -O build/vmlinuz https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.3-x86_64.iso 2>/dev/null || \
+          wget -q -O vmlinuz.tar.gz https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/alpine-virt-3.22.0-x86_64.iso 2>/dev/null || \
+          true
+          # Fallback: use the kernel from the Ubuntu runner
+          if [ ! -f build/vmlinuz ] || [ ! -s build/vmlinuz ]; then
+            echo "Using host kernel as fallback..."
+            cp /boot/vmlinuz-* build/vmlinuz 2>/dev/null || true
+          fi
+          ls -lh build/vmlinuz
+
+      - name: Docker cross-compile to musl
+        run: |
+          docker run --rm -v "$PWD":/work -w /work/src/rust rust:alpine \
+            sh -c 'apk add --no-cache musl-dev && cargo build --release'
+          # Copy binary and create symlinks
+          cp src/rust/target/release/boos rootfs/bin/boos
+          cd rootfs/bin
+          for name in boos-exec boos-process boos-submit boos-gateway boos-supervisor boos-shell; do
+            ln -sf boos "$name"
+          done
+
+      - name: Build initramfs
+        run: |
+          rm -f rootfs/bin/boos-handler
+          cd rootfs && find . | cpio -H newc -o | gzip > ../build/initramfs.cpio.gz && cd ..
+
+      - name: Create var disk image
+        run: |
+          dd if=/dev/zero of=build/var.img bs=1M count=64 2>/dev/null
+          mkfs.ext2 -F build/var.img 2>/dev/null
+
+      - name: QEMU integration test
+        run: sh scripts/ci-test.sh
+        timeout-minutes: 10

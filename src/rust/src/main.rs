@@ -7,6 +7,7 @@ mod log;
 mod registry;
 mod submit;
 mod exec;
+mod exec_file;
 mod process;
 mod gateway;
 mod supervisor;
@@ -34,7 +35,7 @@ fn main() {
         "boos-agent"      => agent::main(),
         _ => {
             eprintln!("Usage: boos-{{submit,exec,process,gateway,supervisor,shell,agent}} ...");
-            std::process::exit(1);
+            std::process::exit(crate::config::EXIT_ERROR);
         }
     }
 }

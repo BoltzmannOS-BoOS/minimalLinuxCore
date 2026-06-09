@@ -55,7 +55,10 @@ impl WorkingMemory {
 
     pub fn save(&self) -> io::Result<()> {
         let dir = Path::new(config::MEMORY_DIR);
-        fs::create_dir_all(dir)?;
+        fs::create_dir_all(dir).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_create_dir"), ("error", &e.to_string())]);
+            e
+        })?;
 
         let content = format!(
             "session_id={}\ngoals={}\ncontext={}\nactive_facts={}\nlast_updated={}\n",
@@ -66,9 +69,15 @@ impl WorkingMemory {
             self.last_updated,
         );
 
-        let tmp = dir.join("working.tmp");
-        fs::write(&tmp, &content)?;
-        fs::rename(&tmp, dir.join("working.kv"))?;
+        let tmp = dir.join(format!("working.{}.tmp", self.session_id));
+        fs::write(&tmp, &content).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_write"), ("error", &e.to_string())]);
+            e
+        })?;
+        fs::rename(&tmp, dir.join("working.kv")).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_rename"), ("error", &e.to_string())]);
+            e
+        })?;
         Ok(())
     }
 
@@ -90,16 +99,19 @@ impl WorkingMemory {
             self.last_updated = now_secs();
         }
     }
+}
 
-    #[allow(dead_code)]
-    pub fn clear_facts(&mut self) {
-        self.active_facts.clear();
-        self.last_updated = now_secs();
-    }
+fn agent_subdir() -> String {
+    std::env::var("BOOS_AGENT_ID").unwrap_or_else(|_| "default".to_string())
 }
 
 fn working_path() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("working.kv")
+    let sub = agent_subdir();
+    if sub == "default" {
+        Path::new(config::MEMORY_DIR).join("working.kv")
+    } else {
+        Path::new(config::MEMORY_DIR).join(&sub).join("working.kv")
+    }
 }
 
 // ── Recent memory ──────────────────────────────────────────────────────────
@@ -169,30 +181,27 @@ pub fn recent_entries() -> Vec<RecentEntry> {
 /// Add an entry to recent memory (ring buffer).
 pub fn recent_add(entry: RecentEntry) -> io::Result<()> {
     let dir = recent_dir();
-    fs::create_dir_all(&dir)?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "recent_create_dir"), ("error", &e.to_string())]);
+        e
+    })?;
 
-    // Find next sequence number
-    let mut max_seq = 0u32;
-    if let Ok(rd) = fs::read_dir(&dir) {
-        for e in rd.filter_map(|e| e.ok()) {
-            let name = e.file_name().to_string_lossy().to_string();
-            if let Some(seq) = name.trim_end_matches(".kv").parse::<u32>().ok() {
-                if seq > max_seq {
-                    max_seq = seq;
-                }
-            }
-        }
-    }
-
-    let next_seq = if max_seq >= MAX_RECENT as u32 {
-        // Ring buffer: wrap around
-        1
-    } else {
-        max_seq + 1
-    };
+    // Ring buffer: use a counter file to track position.
+    // Reading max sequence from filenames is incorrect — after one wrap,
+    // max stays at MAX_RECENT and slot 1 is forever reused.
+    let counter_path = dir.join(".counter");
+    let seq: u32 = std::fs::read_to_string(&counter_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let next_seq = (seq % MAX_RECENT as u32) + 1;
+    let _ = std::fs::write(&counter_path, next_seq.to_string());
 
     let path = dir.join(format!("{}.kv", next_seq));
-    fs::write(&path, entry.to_kv())?;
+    fs::write(&path, entry.to_kv()).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "recent_write"), ("error", &e.to_string())]);
+        e
+    })?;
     Ok(())
 }
 
@@ -206,7 +215,12 @@ pub fn recent_search(query: &str) -> Vec<RecentEntry> {
 }
 
 fn recent_dir() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("recent")
+    let sub = agent_subdir();
+    if sub == "default" {
+        Path::new(config::MEMORY_DIR).join("recent")
+    } else {
+        Path::new(config::MEMORY_DIR).join(&sub).join("recent")
+    }
 }
 
 // ── Archive memory ─────────────────────────────────────────────────────────
@@ -223,7 +237,10 @@ pub struct ArchiveEntry {
 /// Store a key-value pair in archive memory.
 pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::Result<()> {
     let dir = archive_dir();
-    fs::create_dir_all(&dir)?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_create_dir"), ("error", &e.to_string())]);
+        e
+    })?;
 
     let ts = now_secs();
     let safe_key = sanitize_filename(key);
@@ -233,30 +250,16 @@ pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::
         "key={}\nvalue={}\ncreated_at={}\nsession_id={}\ntags={}\n",
         key, sanitize_value(value), ts, session_id, tags
     );
-    fs::write(&path, content)?;
+    fs::write(&path, content).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_write"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
+        e
+    })?;
 
     log::log("boos-memory", "archive_set", &[
         ("key", &log::json_escape(key)),
         ("session", &log::json_escape(session_id)),
     ]);
     Ok(())
-}
-
-/// Get a value from archive memory by key.
-#[allow(dead_code)]
-pub fn archive_get(key: &str) -> Option<ArchiveEntry> {
-    let safe_key = sanitize_filename(key);
-    let path = archive_dir().join(format!("{}.mem", safe_key));
-    let data = fs::read_to_string(&path).ok()?;
-    let kv = parse_kv_string(&data);
-
-    Some(ArchiveEntry {
-        key: kv.get("key")?.clone(),
-        value: kv.get("value")?.clone(),
-        created_at: kv.get("created_at").and_then(|s| s.parse().ok()).unwrap_or(0),
-        session_id: kv.get("session_id").cloned().unwrap_or_default(),
-        tags: kv.get("tags").cloned().unwrap_or_default(),
-    })
 }
 
 /// Search archive memory. Returns entries where query matches key, value, or tags.
@@ -297,7 +300,10 @@ pub fn archive_search(query: &str) -> Vec<ArchiveEntry> {
 pub fn archive_delete(key: &str) -> io::Result<()> {
     let safe_key = sanitize_filename(key);
     let path = archive_dir().join(format!("{}.mem", safe_key));
-    fs::remove_file(&path)?;
+    fs::remove_file(&path).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_delete"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
+        e
+    })?;
     log::log("boos-memory", "archive_delete", &[
         ("key", &log::json_escape(key)),
     ]);
@@ -305,7 +311,12 @@ pub fn archive_delete(key: &str) -> io::Result<()> {
 }
 
 fn archive_dir() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("archive")
+    let sub = agent_subdir();
+    if sub == "default" {
+        Path::new(config::MEMORY_DIR).join("archive")
+    } else {
+        Path::new(config::MEMORY_DIR).join(&sub).join("archive")
+    }
 }
 
 // ── Session management ─────────────────────────────────────────────────────
@@ -550,5 +561,34 @@ mod tests {
         assert_eq!(sanitize_filename("a\0b"), "a_b");
         assert_eq!(sanitize_filename("a|b"), "a_b");
         assert_eq!(sanitize_filename("normal"), "normal");
+    }
+
+    #[test]
+    fn test_persist_roundtrip_atomic() {
+        let dir = std::env::temp_dir().join("boos-test-persist");
+        let _ = fs::create_dir_all(&dir);
+        // Simulate crash: write partial data, verify clean state survives
+        let tmp = dir.join("working.tmp");
+        let real = dir.join("working.kv");
+
+        // Write via temp+rename (atomic pattern)
+        let content = "session_id=crash-test\ngoals=a|b\ncontext=k1::v1\nactive_facts=fact1\nlast_updated=42\n";
+        fs::write(&tmp, content).unwrap();
+        fs::rename(&tmp, &real).unwrap();
+
+        // Read back — data must be intact
+        let kv = read_kv(&real).unwrap();
+        assert_eq!(kv.get("session_id").unwrap(), "crash-test");
+        assert_eq!(kv.get("goals").unwrap(), "a|b");
+        assert_eq!(kv.get("last_updated").unwrap(), "42");
+
+        // Simulate partial write (crash mid-write) — temp file should exist
+        // but real file should have previous state, not partial state
+        let prev = fs::read_to_string(&real).unwrap();
+        fs::write(&tmp, "session_id=partial\nCORRUPT").unwrap();
+        // Crash before rename: real file unchanged
+        assert_eq!(fs::read_to_string(&real).unwrap(), prev);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

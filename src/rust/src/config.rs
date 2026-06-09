@@ -44,8 +44,6 @@ pub const IMMUTABLE_DENY: &[&str] = &[
 ];
 
 // Protected paths — write-file refuses to write to these directories.
-// The agent can READ but cannot WRITE to these via raw file operations.
-// System directories go through boos-exec builtins (submit, remember, etc.)
 pub const PROTECTED_DIRS: &[&str] = &[
     "/etc",
     "/bin",
@@ -55,9 +53,16 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/lib",
     "/boot",
     "/proc",
-    "/var/boos/results",   // must use submit pipeline
-    "/var/boos/memory",    // must use remember/observe/recall
-    "/var/log",            // must use boos-exec logging
+    "/var/boos/results",
+    "/var/boos/memory",
+    "/var/log",
+];
+
+// Protected read paths — read-file refuses to read these specific files
+// (not directories). For secrets that must never leak via raw file reads.
+pub const PROTECTED_READ_PATHS: &[&str] = &[
+    "/etc/boos/agent.conf",
+    "/etc/boos/gateway_token",
 ];
 
 // Exec allowlist — check full command prefix, not just binary name.
@@ -148,10 +153,31 @@ mod path_tests {
 }
 
 /// Check if a path is under a protected directory.
-/// Uses normalize_path for safe comparison.
+/// Uses normalize_path for lexical comparison, then canonicalize()
+/// to resolve symlinks if the path already exists on disk.
 pub fn is_protected_path(path: &str) -> bool {
     let normalized = normalize_path(path);
     let lower = normalized.to_lowercase();
+
+    // Check against lexical path first (always works)
+    if prefix_matches_protected(&lower) {
+        return true;
+    }
+
+    // If path exists, resolve symlinks and check canonical path
+    if let Ok(real) = std::fs::canonicalize(path) {
+        if let Some(real_str) = real.to_str() {
+            let real_lower = real_str.to_lowercase();
+            if real_lower != lower {
+                return prefix_matches_protected(&real_lower);
+            }
+        }
+    }
+
+    false
+}
+
+fn prefix_matches_protected(lower: &str) -> bool {
     for dir in PROTECTED_DIRS {
         let dirl = dir.to_lowercase();
         if lower.starts_with(&dirl) && (lower.len() == dirl.len() || lower.as_bytes()[dirl.len()] == b'/') {
@@ -159,4 +185,11 @@ pub fn is_protected_path(path: &str) -> bool {
         }
     }
     false
+}
+
+/// Check if a path is a protected read path (secrets that must not be read).
+pub fn is_protected_read_path(path: &str) -> bool {
+    let normalized = normalize_path(path);
+    let lower = normalized.to_lowercase();
+    PROTECTED_READ_PATHS.iter().any(|p| lower == p.to_lowercase())
 }

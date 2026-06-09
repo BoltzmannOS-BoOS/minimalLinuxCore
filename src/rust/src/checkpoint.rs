@@ -79,7 +79,7 @@ impl CheckpointManager {
 
     pub fn create(&self, session_id: &str, label: &str, actions: &[String], round: u32, parent: Option<&str>) -> String {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let id = format!("ck-{}-{:x}", ts, actions.len());
+        let id = format!("ck-{}-{}-{:x}", ts, std::process::id(), actions.len());
         let ck = Checkpoint {
             id: id.clone(), session_id: session_id.to_string(), timestamp: ts,
             label: label.to_string(), recent_actions: actions.to_vec(), round,

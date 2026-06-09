@@ -136,12 +136,6 @@ struct ExploreResult {
 }
 
 fn try_command(_known: bool, cmd: &str, args: &str) -> Option<String> {
-    let _full_cmd = if args.is_empty() {
-        cmd.to_string()
-    } else {
-        format!("{} {}", cmd, args)
-    };
-
     // Use boos-exec directly (same binary, different argv[0])
     let output = match Command::new("/bin/boos-exec")
         .arg(cmd)
