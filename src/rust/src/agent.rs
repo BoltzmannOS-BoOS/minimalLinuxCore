@@ -428,16 +428,11 @@ pub fn main() {
 
     // Check for develop subcommand (autonomous development agent)
     if args.len() >= 2 && args[1] == "develop" {
-        let mut api_key: Option<String> = None;
         let mut goal = "改进BoOS".to_string();
         let mut max_loops = 20u32;
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
-                "--api-key" => {
-                    i += 1;
-                    if i < args.len() { api_key = Some(args[i].clone()); }
-                }
                 "--goal" => {
                     i += 1;
                     if i < args.len() { goal = args[i].clone(); }
@@ -450,7 +445,7 @@ pub fn main() {
             }
             i += 1;
         }
-        crate::agent_develop::run_develop(api_key.as_deref(), &goal, max_loops);
+        crate::agent_develop::run_develop(&goal, max_loops);
         return;
     }
 

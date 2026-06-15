@@ -106,11 +106,11 @@ fn spawn_daemon(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>) {
         ("cmd", &d.exec),
     ]);
 
-    // If user is specified, run via su -c
+    // If user is specified, run via su. BusyBox su syntax: su -c "cmd" user
     let spawn_result = if !d.user.is_empty() {
         let cmd_str = d.exec.clone();
         Command::new("su")
-            .args(["-s", "/bin/sh", "-c", &cmd_str, &d.user])
+            .args(["-c", &cmd_str, &d.user])
             .spawn()
     } else {
         let cmd = parts[0];
@@ -209,15 +209,18 @@ fn check_and_restart(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>
     // Remove old entry
     children.remove(&d.name);
 
-    // Spawn new process
+    // Spawn new process (same logic as spawn_daemon)
     let parts: Vec<&str> = d.exec.split_whitespace().collect();
     if parts.is_empty() {
         return;
     }
-    let cmd = parts[0];
-    let args = &parts[1..];
+    let spawn_result = if !d.user.is_empty() {
+        Command::new("su").args(["-c", &d.exec, &d.user]).spawn()
+    } else {
+        Command::new(parts[0]).args(&parts[1..]).spawn()
+    };
 
-    match Command::new(cmd).args(args).spawn() {
+    match spawn_result {
         Ok(child) => {
             children.insert(d.name.clone(), ChildInfo {
                 child,

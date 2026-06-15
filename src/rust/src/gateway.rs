@@ -96,13 +96,17 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
         let _ = writeln!(stream, "GATEWAY: protocol error");
         return;
     }
+    // Protocol escapes newlines as \n to keep single-line semantics
+    let sys = sys.trim().replace("\\n", "\n");
+    let ctx = ctx.trim().replace("\\n", "\n");
+    println!("[gateway] DEEPSEEK request received");
     let key = match load_api_key() {
-        Some(k) => k,
-        None => { let _ = writeln!(stream, "GATEWAY: no API key"); return; }
+        Some(k) => { println!("[gateway] key found"); k }
+        None => { let _ = writeln!(stream, "GATEWAY: no API key"); println!("[gateway] NO KEY"); return; }
     };
     // Simple JSON escape + API call
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
-    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, esc(sys.trim()), esc(ctx.trim()));
+    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, esc(&sys), esc(&ctx));
     match ureq::post("https://api.deepseek.com/v1/chat/completions")
         .set("Authorization", &format!("Bearer {}", key))
         .set("Content-Type", "application/json")
@@ -119,9 +123,16 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
                     let _ = writeln!(stream, "{}", raw.trim());
                 }
             }
+            println!("[gateway] DEEPSEEK OK, response sent");
         }
-        Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
-        Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
+        Ok(r) => {
+            let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status());
+            println!("[gateway] DEEPSEEK HTTP {}", r.status());
+        }
+        Err(e) => {
+            let _ = writeln!(stream, "GATEWAY: {}", e);
+            println!("[gateway] DEEPSEEK error: {}", e);
+        }
     }
 }
 
@@ -145,9 +156,22 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     };
     let mut reader = BufReader::new(cloned);
 
-    // Read first line
+    // Read first line (length-limited for robustness)
     let mut line = String::new();
-    if reader.read_line(&mut line).is_err() {
+    let mut limited = reader.by_ref().take(8192u64);
+    if limited.read_line(&mut line).is_err() || line.is_empty() {
+        return;
+    }
+    // Release the take() borrow so subsequent reads use the full reader
+    drop(limited);
+    // If line hit the cap without a newline, reject
+    if !line.ends_with('\n') {
+        let _ = writeln!(stream, "GATEWAY: line too long");
+        return;
+    }
+    // If line hit the cap without a newline, reject
+    if !line.ends_with('\n') {
+        let _ = writeln!(stream, "GATEWAY: line too long");
         return;
     }
     let line = line.trim().to_string();

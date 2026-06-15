@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# On Alpine virt kernel, modules live in the companion initramfs.
+# Load them if available (silently skip if not present).
+modprobe virtio_blk 2>/dev/null
+modprobe ext4 2>/dev/null
+
 mkdir -p /proc /sys /dev /tmp
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
@@ -8,7 +13,7 @@ mount -t devtmpfs devtmpfs /dev
 ifconfig lo up
 
 echo "[init] mounting persistent /var..."
-if mount -t ext2 /dev/vda /var 2>/dev/null; then
+if mount -t ext4 /dev/vda /var 2>/dev/null || mount -t ext2 /dev/vda /var 2>/dev/null; then
     echo "[init] persistent /var mounted"
     mkdir -p /var/boos/requests /var/boos/results /var/log
     sync

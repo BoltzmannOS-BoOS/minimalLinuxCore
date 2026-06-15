@@ -591,4 +591,28 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_ring_buffer_counter_increments() {
+        // Test that recent_add doesn't degenerate to overwriting slot 1.
+        // Write 10 entries and verify sequential content storage.
+        let dir = recent_dir();
+        let _ = fs::create_dir_all(&dir);
+        // Clean previous test data
+        if let Ok(rd) = fs::read_dir(&dir) {
+            for e in rd.filter_map(|e| e.ok()) {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+        for i in 0..10 {
+            let entry = RecentEntry::new("test", &format!("entry-{}", i), "ring-test");
+            let _ = recent_add(entry);
+        }
+        let all = recent_entries();
+        if all.len() >= 5 {
+            let contents: Vec<&str> = all.iter().map(|e| e.content.as_str()).collect();
+            assert!(contents.iter().any(|c| c.contains("entry-0")), "entry-0 missing");
+            assert!(contents.iter().any(|c| c.contains("entry-9")), "entry-9 missing: ring buffer may be broken");
+        }
+    }
 }

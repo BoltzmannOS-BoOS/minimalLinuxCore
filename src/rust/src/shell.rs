@@ -71,9 +71,11 @@ pub fn main() {
                 exec_args.extend_from_slice(args);
                 let _ = Command::new("/bin/boos-exec").args(&exec_args).status();
             }
+            // Pass unrecognized commands to boos-exec — registry handles validation
             _ => {
-                writeln!(stdout, "Unknown command: {}", cmd).ok();
-                writeln!(stdout, "Type 'help'.").ok();
+                let mut exec_args: Vec<&str> = vec![cmd];
+                exec_args.extend_from_slice(args);
+                let _ = Command::new("/bin/boos-exec").args(&exec_args).status();
             }
         }
     }

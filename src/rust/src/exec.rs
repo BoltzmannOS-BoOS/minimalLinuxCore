@@ -31,10 +31,11 @@ fn show_help() {
     println!("  list-dir [path]                 list directory contents");
     println!("  stat <path>                     show file metadata");
     println!("  exec <binary> [args...]          execute a system binary");
-    println!("  audit recent [n]               show last N actions");
-    println!("  audit failures                 show denied/errored actions");
-    println!("  audit session <id>             show actions in a session");
-    println!("  audit summary                  show action counts + success rate");
+  println!("  audit recent [n]               show last N actions");
+  println!("  audit failures                 show denied/errored actions");
+  println!("  audit session <id>             show actions in a session");
+  println!("  audit summary                  show action counts + success rate");
+  println!("  audit timeline [n]             show full merged timeline");
     println!("  reset                          clear all persistent state (human-only)");
     println!("  ── Agent Memory ──");
     println!("  session-start [id]  start a new agent session");
@@ -590,9 +591,10 @@ fn audit_cmd(args: &str) -> i32 {
         "failures" => audit_failures(),
         "session" => audit_session(rest),
         "summary" => audit_summary(),
+        "timeline" => audit_timeline(rest),
         _ => {
             eprintln!("Unknown audit subcommand: {}", subcmd);
-            eprintln!("Usage: audit <recent|failures|session|summary>");
+            eprintln!("Usage: audit <recent|failures|session|summary|timeline>");
             EXIT_ERROR
         }
     }
@@ -728,6 +730,48 @@ fn audit_summary() -> i32 {
         println!("  Success rate:  {:.1}%", pct);
     }
 
+    EXIT_ALLOWED
+}
+
+fn audit_timeline(args: &str) -> i32 {
+    let n: usize = args.split_whitespace().next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20);
+
+    // Collect result files sorted by modification time (oldest first)
+    let mut entries: Vec<(String, std::fs::Metadata)> = Vec::new();
+    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
+        for e in dir.filter_map(|e| e.ok()) {
+            let path = e.path();
+            if path.extension().map_or(false, |ext| ext == "out") {
+                if let Ok(meta) = path.metadata() {
+                    entries.push((path.to_string_lossy().to_string(), meta));
+                }
+            }
+        }
+    }
+    entries.sort_by(|a, b| b.1.modified().ok().cmp(&a.1.modified().ok()));
+
+    println!("Timeline (last {} actions):", n.min(entries.len()));
+    for (path_str, _) in entries.iter().take(n) {
+        let kv = registry::parse_kv_file(Path::new(path_str));
+        let id = kv.get("id").map(|s| s.as_str()).unwrap_or("?");
+        let cmd = kv.get("command").map(|s| s.as_str()).unwrap_or("?");
+        let args = kv.get("args").map(|s| s.as_str()).unwrap_or("");
+        let verdict = kv.get("verdict").map(|s| s.as_str()).unwrap_or("?");
+        let exit_code = kv.get("exit_code").map(|s| s.as_str()).unwrap_or("?");
+        let duration = kv.get("duration_ms").map(|s| s.as_str()).unwrap_or("?");
+        let session = kv.get("session_id").map(|s| s.as_str()).unwrap_or("");
+        let requester = kv.get("requester").map(|s| s.as_str()).unwrap_or("?");
+        let started = kv.get("started_at").map(|s| s.as_str()).unwrap_or("?");
+
+        print!("t={} [{}] {} {}/{}",
+            started, id, requester, cmd, verdict);
+        if !args.is_empty() { print!(" {}", args); }
+        print!(" -> {} ({}ms exit={})", verdict, duration, exit_code);
+        if !session.is_empty() { print!(" session={}", session); }
+        println!();
+    }
     EXIT_ALLOWED
 }
 

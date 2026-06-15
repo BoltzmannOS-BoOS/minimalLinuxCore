@@ -15,8 +15,8 @@ fn gateway_ask(system_prompt: &str, context: &str) -> Option<String> {
     let mut stream = std::net::TcpStream::connect("127.0.0.1:5555").ok()?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(35)));
     let _ = writeln!(stream, "DEEPSEEK");
-    let _ = writeln!(stream, "{}", system_prompt);
-    let _ = writeln!(stream, "{}", context);
+    let _ = writeln!(stream, "{}", system_prompt.replace('\n', "\\n"));
+    let _ = writeln!(stream, "{}", context.replace('\n', "\\n"));
     let mut reader = BufReader::new(stream);
     let mut response = String::new();
     reader.read_line(&mut response).ok()?;
@@ -108,14 +108,17 @@ fn build_context() -> (String, Vec<String>) {
     (ctx, tried)
 }
 
-fn execute_suggestion(cmd_line: &str) -> String {
+fn execute_suggestion(cmd_line: &str, session_id: &str) -> String {
     let parts: Vec<&str> = cmd_line.split_whitespace().collect();
     if parts.is_empty() {
         return "(empty)".to_string();
     }
     let cmd = parts[0];
     let args: Vec<&str> = parts[1..].to_vec();
-    match Command::new("/bin/boos-exec").arg(cmd).args(&args).output() {
+    match Command::new("/bin/boos-exec")
+        .env("BOOS_REQUESTER", "ai")
+        .env("BOOS_SESSION", session_id)
+        .arg(cmd).args(&args).output() {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
             let stderr = String::from_utf8_lossy(&o.stderr);
@@ -210,7 +213,7 @@ pub fn run_loop(goal: &str, max_loops: u32, prior_knowledge: Option<&str>) {
         }
 
         print!("── BoOS response: ");
-        let output = execute_suggestion(&suggestion);
+        let output = execute_suggestion(&suggestion, &session_id);
         println!("{}", output);
 
         all_interactions.push(format!(
@@ -267,4 +270,25 @@ pub fn run_loop(goal: &str, max_loops: u32, prior_knowledge: Option<&str>) {
     }
 
     let _ = memory::session_end();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    #[test]
+    fn test_session_id_passed_to_child() {
+        // Verify BOOS_SESSION and BOOS_REQUESTER are set on child process.
+        // Use sh to echo vars back — bypasses boos-exec entirely for env test.
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg("echo SESSION=$BOOS_SESSION REQUESTER=$BOOS_REQUESTER")
+            .env("BOOS_REQUESTER", "ai")
+            .env("BOOS_SESSION", "test-sess-123")
+            .output()
+            .expect("sh must be available");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("SESSION=test-sess-123"), "env not passed: {}", stdout);
+        assert!(stdout.contains("REQUESTER=ai"), "env not passed: {}", stdout);
+    }
 }

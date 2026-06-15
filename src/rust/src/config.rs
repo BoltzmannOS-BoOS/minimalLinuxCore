@@ -193,3 +193,26 @@ pub fn is_protected_read_path(path: &str) -> bool {
     let lower = normalized.to_lowercase();
     PROTECTED_READ_PATHS.iter().any(|p| lower == p.to_lowercase())
 }
+
+#[test]
+fn test_symlink_does_not_crash() {
+    use std::os::unix::fs;
+    let link = "/tmp/boos-test-symlink-protect";
+    let _ = std::fs::remove_file(link);
+    // is_protected_path calls canonicalize on existing paths.
+    // This test verifies it handles symlinks without panicking.
+    fs::symlink("/etc/passwd", link).ok();
+    let _result = is_protected_path(link);
+    // If canonicalize resolves past the symlink on Linux, it returns true.
+    // On macOS /etc→/private/etc, lexically not in PROTECTED_DIRS prefix.
+    // Either way, the function must not panic.
+    let _ = std::fs::remove_file(link);
+}
+
+#[test]
+fn test_read_protection_exact_match() {
+    assert!(is_protected_read_path("/etc/boos/agent.conf"));
+    assert!(is_protected_read_path("/etc/boos/gateway_token"));
+    assert!(!is_protected_read_path("/etc/passwd"));
+    assert!(!is_protected_read_path("/tmp/test.txt"));
+}

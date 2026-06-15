@@ -86,6 +86,24 @@ boos-process → 读取请求 → boos-exec → 创 /var/boos/results/req-{id}.o
 boos-submit --wait → 轮询结果文件 → 返回
 ```
 
+## 行车记录仪
+
+三个数据源记录所有行为：
+
+| 数据源 | 位置 | 记录什么 | 完整度 |
+|--------|------|----------|--------|
+| 操作日志 | `/var/log/boos.log` | JSON 行事件流 | 所有 boos-exec 命令的允许/拒绝/错误 |
+| 结果档案 | `/var/boos/results/*.out` | 每次请求的完整记录 | 命令+参数+判定+耗时+输出+session_id |
+| 记忆流 | `/var/boos/memory/recent/` | Agent 的观察和行动记录 | agent loop/develop 的自主行为 |
+
+查询命令：
+- `audit timeline [n]` — 按时间排列最近 n 条操作记录
+- `audit session <id>` — 过滤单个 session
+- `audit failures` — 只看失败/拒绝的操作
+- `audit summary` — 统计（总数、通过率）
+
+注意：`audit timeline` 目前只读取 result 文件。日志和记忆流可单独查看（`log` 命令和 `recall` 命令），尚未合并到 timeline 中。
+
 ## 两种 AI 运行模式
 
 ### 模式 A：外部 AI 操控（ai-client.py）
@@ -140,14 +158,15 @@ Agent 进程在 QEMU 内启动，循环：
 # 编译（必须 0 warning）
 cd src/rust && cargo build --release
 
-# 测试（当前 159 passed）
+# 测试（当前 126 passed，全部含 assert）
 cargo test
 
-# QEMU 集成测试（需要 Linux 主机或 GitHub Actions）
-# macOS 端口转发有限制，但 QEMU 内 guest→guest 通信已验证通过：
-#   - boos-exec help 输出正确（全命令列表）
-#   - boos-exec status 输出正确（kernel版本、uptime）
-#   - gateway TCP 在 QEMU 内 nc 127.0.0.1:5555 正常
+# QEMU 集成测试
+# Guest 内已验证：
+#   - boos-exec help/status 输出正确
+#   - gateway TCP nc 127.0.0.1:5555 正常
+#   - agent loop 启动 + gateway 协议握手成功（API key 无效时报 401 并重试）
+# macOS host→guest port-forward 未通（QEMU 限制），需 Linux 主机或 GitHub Actions CI
 
 # Docker 交叉编译 x86_64 musl（用于 QEMU）：
 docker run --rm --platform linux/amd64 -v $PWD:/work -w /work/src/rust rust:alpine \
@@ -219,9 +238,12 @@ Archive Memory → /var/boos/memory/archive/*.mem
 
 ## 已知问题
 
-1. ~~`read-file` 无路径限制~~ → 已加 PROTECTED_READ_PATHS
-2. ~~`is_protected_path` 不跟踪符号链接~~ → 已加 canonicalize()
-3. ~~gateway write 无超时~~ → 已加 set_write_timeout(30s)
-4. ~~FETCH 在 develop loop 里直连~~ → 已改为走 gateway
-5. ~~无 panic handler~~ → gateway 已加 set_hook + catch_unwind（release 下 abort 前记录日志，debug 下线程继续运行）
+1. ~~`read-file` 无路径限制~~ → PROTECTED_READ_PATHS
+2. ~~`is_protected_path` 符号链接~~ → canonicalize()
+3. ~~gateway write timeout~~ → set_write_timeout(30s)
+4. ~~FETCH 直连绕过~~ → 走 gateway
+5. ~~panic handler~~ → set_hook + catch_unwind
+6. 持久盘需要 Alpine virt 内核 + 模块 initramfs（virtio_blk + ext4 不在裸核中）
+   - 解决方案：合并 Alpine 的 initramfs-virt 到 BoOS initramfs 中
+   - 已在 QEMU 中验证 crash→重启→数据完整存活
 
