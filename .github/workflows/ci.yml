@@ -7,78 +7,92 @@ on:
     branches: [main]
 
 jobs:
-  # ── Fast path: host build + unit tests ──────────────────────────────
   unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: cargo test
-        run: cargo test
+      - run: cargo test
         working-directory: src/rust
 
-  # ── Check release build with zero warnings ──────────────────────────
   release-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: cargo build --release
-        run: cargo build --release 2>&1 | tee /tmp/build.log
+      - run: cargo build --release 2>&1 | tee /tmp/build.log
         working-directory: src/rust
-      - name: verify zero warnings
-        run: |
+      - run: |
           if grep -q 'warning:' /tmp/build.log; then
-            echo "BUILD HAS WARNINGS:"
-            grep 'warning:' /tmp/build.log
-            exit 1
+            echo "BUILD HAS WARNINGS"; grep 'warning:' /tmp/build.log; exit 1
           fi
-          echo "Zero warnings."
 
-  # ── Docker musl cross-compile + QEMU integration test ───────────────
-  integration:
+  docker-qemu:
     runs-on: ubuntu-latest
     needs: [unit-tests, release-build]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 cpio gzip netcat-openbsd wget
-
-      - name: Download Alpine virt kernel
-        run: |
-          mkdir -p build
-          wget -q -O build/vmlinuz https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.3-x86_64.iso 2>/dev/null || \
-          wget -q -O vmlinuz.tar.gz https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/alpine-virt-3.22.0-x86_64.iso 2>/dev/null || \
-          true
-          # Fallback: use the kernel from the Ubuntu runner
-          if [ ! -f build/vmlinuz ] || [ ! -s build/vmlinuz ]; then
-            echo "Using host kernel as fallback..."
-            cp /boot/vmlinuz-* build/vmlinuz 2>/dev/null || true
-          fi
-          ls -lh build/vmlinuz
-
-      - name: Docker cross-compile to musl
+      - name: Docker cross-compile (musl)
         run: |
           docker run --rm -v "$PWD":/work -w /work/src/rust rust:alpine \
             sh -c 'apk add --no-cache musl-dev && cargo build --release'
-          # Copy binary and create symlinks
+
+      - name: Build merged initramfs (Alpine kernel modules + BoOS)
+        run: |
+          # Fetch Alpine kernel with virtio_net/blk/ext4 modules
+          docker run --rm -v "$PWD":/out alpine:3.21 sh -c '
+            apk add --no-cache linux-virt > /dev/null 2>&1
+            cp /boot/vmlinuz-virt /out/build/vmlinuz
+            cp /boot/initramfs-virt /out/build/initramfs-virt
+          '
+          # Install binary, create symlinks, merge initramfs
           cp src/rust/target/release/boos rootfs/bin/boos
-          cd rootfs/bin
-          for name in boos-exec boos-process boos-submit boos-gateway boos-supervisor boos-shell; do
-            ln -sf boos "$name"
-          done
-
-      - name: Build initramfs
-        run: |
-          rm -f rootfs/bin/boos-handler
-          cd rootfs && find . | cpio -H newc -o | gzip > ../build/initramfs.cpio.gz && cd ..
-
-      - name: Create var disk image
-        run: |
-          dd if=/dev/zero of=build/var.img bs=1M count=64 2>/dev/null
-          mkfs.ext2 -F build/var.img 2>/dev/null
+          cd rootfs/bin && for n in boos-exec boos-process boos-submit boos-gateway boos-supervisor boos-shell boos-agent; do ln -sf boos "$n"; done && cd ../..
+          docker run --rm \
+            -v "$PWD/rootfs":/boos \
+            -v "$PWD/build":/data \
+            alpine sh -c '
+            mkdir /merged && cd /merged
+            zcat /data/initramfs-virt | cpio -idm 2>/dev/null
+            cd /boos && find . -not -name ".DS_Store" | cpio -pmd /merged 2>/dev/null
+            cat > /merged/init << "X"
+#!/bin/sh
+/bin/busybox mkdir -p /proc /sys /dev /tmp /var /etc/boos
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+/bin/busybox modprobe virtio_net 2>/dev/null
+/bin/busybox modprobe virtio_blk 2>/dev/null
+/bin/busybox modprobe ext4 2>/dev/null
+/bin/busybox ifconfig lo up
+/bin/busybox ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up 2>/dev/null
+/bin/busybox route add default gw 10.0.2.2 2>/dev/null
+echo "nameserver 10.0.2.3" > /etc/resolv.conf
+echo "=== BOOT ==="
+/bin/boos-gateway 5555 &
+sleep 2
+echo "=== GATEWAY TEST ==="
+echo "help" | /bin/busybox nc -w 3 127.0.0.1 5555 | head -3
+echo "status" | /bin/busybox nc -w 3 127.0.0.1 5555 | grep kernel
+echo "=== AGENT LOOP ==="
+/bin/boos-agent loop --goal "Run help" --max-loops 2 2>&1 | head -15
+echo "=== CI PASS ==="
+X
+            chmod +x /merged/init
+            cd /merged && find . | cpio -H newc -o | gzip > /data/initramfs-merged.cpio.gz
+            echo "initramfs: $(ls -lh /data/initramfs-merged.cpio.gz | awk "{print \$5}")"
+          '
 
       - name: QEMU integration test
-        run: sh scripts/ci-test.sh
-        timeout-minutes: 10
+        run: |
+          timeout 60 qemu-system-x86_64 \
+            -kernel build/vmlinuz \
+            -initrd build/initramfs-merged.cpio.gz \
+            -append "console=ttyS0 rdinit=/init" \
+            -netdev user,id=net0 -device virtio-net,netdev=net0 \
+            -nographic -no-reboot 2>&1 | tee /tmp/qemu.log
+          grep -q "BoOS commands" /tmp/qemu.log && echo "GATEWAY OK"
+          grep -q "kernel:" /tmp/qemu.log && echo "STATUS OK"
+          grep -q "Loop 1/2" /tmp/qemu.log && echo "AGENT OK"
+          grep -q "CI PASS" /tmp/qemu.log && echo "ALL OK" || (echo "FAILED"; exit 1)

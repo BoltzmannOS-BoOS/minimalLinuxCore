@@ -23,14 +23,18 @@ fn get_auth_token() -> Option<String> {
 // ── DeepSeek API proxy (gateway has key access, agent doesn't) ─────────────
 
 fn load_api_key() -> Option<String> {
-    std::fs::read_to_string("/etc/boos/agent.conf").ok().and_then(|data| {
-        for line in data.lines() {
-            if let Some(val) = line.trim().strip_prefix("api_key=") {
-                if !val.trim().is_empty() { return Some(val.trim().to_string()); }
-            }
-        }
-        None
-    })
+    // Priority: env var (no file, no disk exposure), then fallback to file
+    std::env::var("BOOS_API_KEY").ok()
+        .or_else(|| {
+            std::fs::read_to_string("/etc/boos/agent.conf").ok().and_then(|data| {
+                for line in data.lines() {
+                    if let Some(val) = line.trim().strip_prefix("api_key=") {
+                        if !val.trim().is_empty() { return Some(val.trim().to_string()); }
+                    }
+                }
+                None
+            })
+        })
 }
 
 // ── FETCH: read-only network proxy (agent cannot exfiltrate) ───────────────
