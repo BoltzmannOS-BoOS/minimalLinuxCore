@@ -1,0 +1,5 @@
+id=resident
+user=boos-agent
+uid=101
+gid=101
+enabled=1

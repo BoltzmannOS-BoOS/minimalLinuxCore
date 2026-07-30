@@ -6,9 +6,11 @@ use crate::config;
 mod definition;
 mod process;
 
-pub use definition::{load_definitions, load_definitions_from};
+pub use definition::load_definitions;
 pub use process::current_context;
 
+#[cfg(test)]
+use definition::load_definitions_from;
 #[cfg(test)]
 use process::parse_effective_uid;
 
@@ -55,10 +57,6 @@ impl PrincipalContext {
 
     pub fn gid(&self) -> u32 {
         self.definition.gid
-    }
-
-    pub fn user(&self) -> &str {
-        &self.definition.user
     }
 
     pub fn runtime_root(&self) -> &Path {

@@ -45,6 +45,20 @@ qemu-system-x86_64 \
   > build/ci-qemu.log 2>&1 &
 QEMU_PID=$!
 
+echo "Waiting for resident principal readiness..."
+for i in $(seq 1 30); do
+    if grep -Fq "resident_ready principal=resident" build/ci-qemu.log; then
+        echo "Resident principal is ready (attempt $i)."
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "TIMEOUT: resident principal did not become ready"
+        tail -200 build/ci-qemu.log
+        exit 1
+    fi
+    sleep 1
+done
+
 echo "Waiting for gateway on port ${GATEWAY_PORT}..."
 for i in $(seq 1 30); do
     readiness_output=$(
@@ -104,6 +118,7 @@ echo "=== Running integration tests ==="
 
 test_boot_log "[init] persistent /var mounted" "persistent /var"
 test_boot_log "[init] gateway token protected" "gateway token protected"
+test_boot_log "resident_ready principal=resident" "resident principal ready"
 
 printf "  %-25s " "unauthenticated rejected"
 unauthenticated_output=$(
@@ -133,8 +148,8 @@ test_cmd "remember ci-key ci-val" "Remembered"      "remember"
 test_cmd "recall ci-key"     "ci-val"               "recall"
 test_cmd "session-status"    "Session"              "session status"
 test_cmd "session-end"       "ended"                "session end"
-test_cmd "result nonexistent" "No result"           "result (missing)"
-test_cmd "daemons"           "running\|stopped\|disabled" "daemons"
+test_cmd "result req-nonexistent" "No result"       "result (missing)"
+test_cmd "daemons"           "agent: running"        "resident still running"
 test_cmd "audit summary"     "Total actions"        "audit summary"
 test_cmd "log"               "gateway"              "log"
 test_cmd "shell"             "denied"               "shell (denied)"

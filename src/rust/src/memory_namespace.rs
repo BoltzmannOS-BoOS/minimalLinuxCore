@@ -10,6 +10,7 @@ pub struct MemoryNamespace {
 }
 
 impl MemoryNamespace {
+    #[cfg(test)]
     pub fn new(memory_root: &Path, agent_id: Option<&str>) -> io::Result<Self> {
         let root = match agent_id {
             None | Some("default") => memory_root.to_path_buf(),

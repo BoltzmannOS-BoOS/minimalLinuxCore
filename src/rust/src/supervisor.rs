@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::config;
 use crate::log;
 use crate::registry;
 
@@ -28,6 +30,7 @@ struct DaemonConfig {
     name: String,
     exec: String,
     user: String,   // optional — if set, run daemon as this user
+    principal: String,
     restart: String, // "always" or "never"
     enabled: bool,
 }
@@ -75,50 +78,94 @@ fn load_daemon_configs() -> Vec<DaemonConfig> {
         }
 
         let kv = registry::parse_kv_file(&path);
-        let name = kv.get("name").cloned().unwrap_or_default();
-        let exec = kv.get("exec").cloned().unwrap_or_default();
-        let user = kv.get("user").cloned().unwrap_or_default();
-        let restart = kv.get("restart").cloned().unwrap_or_else(|| "always".into());
-        let enabled = kv.get("enabled").map(|v| v == "1").unwrap_or(false);
-
-        if name.is_empty() || exec.is_empty() {
-            log::log("boos-supervisor", "error", &[
-                ("msg", "invalid daemon config"),
-                ("file", &fname),
-            ]);
-            continue;
+        match daemon_config_from_fields(&kv) {
+            Ok(config) => configs.push(config),
+            Err(error) => {
+                log::log("boos-supervisor", "error", &[
+                    ("msg", "invalid daemon config"),
+                    ("file", &fname),
+                    ("error", &log::json_escape(&error.to_string())),
+                ]);
+            }
         }
-
-        configs.push(DaemonConfig { name, exec, user, restart, enabled });
     }
 
     configs
 }
 
-fn spawn_daemon(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>) {
-    let parts: Vec<&str> = d.exec.split_whitespace().collect();
-    if parts.is_empty() {
-        return;
+fn daemon_config_from_fields(fields: &HashMap<String, String>) -> io::Result<DaemonConfig> {
+    let name = fields.get("name").cloned().unwrap_or_default();
+    let exec = fields.get("exec").cloned().unwrap_or_default();
+    if name.is_empty() || exec.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "daemon name and exec are required",
+        ));
     }
 
+    let principal = fields.get("principal").cloned().unwrap_or_default();
+    if !principal.is_empty() && !config::is_valid_runtime_id(&principal) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "daemon principal is invalid",
+        ));
+    }
+
+    Ok(DaemonConfig {
+        name,
+        exec,
+        user: fields.get("user").cloned().unwrap_or_default(),
+        principal,
+        restart: fields
+            .get("restart")
+            .cloned()
+            .unwrap_or_else(|| "always".into()),
+        enabled: fields.get("enabled").map(|value| value == "1").unwrap_or(false),
+    })
+}
+
+fn privilege_dropped_command(daemon: &DaemonConfig) -> String {
+    if daemon.principal.is_empty() {
+        daemon.exec.clone()
+    } else {
+        format!(
+            "BOOS_PRINCIPAL_ID={} {}",
+            daemon.principal, daemon.exec
+        )
+    }
+}
+
+fn spawn_daemon_process(daemon: &DaemonConfig) -> io::Result<Child> {
+    let parts: Vec<&str> = daemon.exec.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "daemon command is empty",
+        ));
+    }
+
+    if !daemon.user.is_empty() {
+        return Command::new("su")
+            .args(["-c", &privilege_dropped_command(daemon), &daemon.user])
+            .spawn();
+    }
+
+    let mut command = Command::new(parts[0]);
+    command.args(&parts[1..]);
+    if !daemon.principal.is_empty() {
+        command.env("BOOS_PRINCIPAL_ID", &daemon.principal);
+    }
+    command.spawn()
+}
+
+fn spawn_daemon(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>) {
     log::log("boos-supervisor", "starting", &[
         ("daemon", &d.name),
         ("cmd", &d.exec),
+        ("principal", &d.principal),
     ]);
 
-    // If user is specified, run via su. BusyBox su syntax: su -c "cmd" user
-    let spawn_result = if !d.user.is_empty() {
-        let cmd_str = d.exec.clone();
-        Command::new("su")
-            .args(["-c", &cmd_str, &d.user])
-            .spawn()
-    } else {
-        let cmd = parts[0];
-        let args = &parts[1..];
-        Command::new(cmd).args(args).spawn()
-    };
-
-    match spawn_result {
+    match spawn_daemon_process(d) {
         Ok(child) => {
             let pid = child.id();
             children.insert(d.name.clone(), ChildInfo {
@@ -209,18 +256,7 @@ fn check_and_restart(d: &DaemonConfig, children: &mut HashMap<String, ChildInfo>
     // Remove old entry
     children.remove(&d.name);
 
-    // Spawn new process (same logic as spawn_daemon)
-    let parts: Vec<&str> = d.exec.split_whitespace().collect();
-    if parts.is_empty() {
-        return;
-    }
-    let spawn_result = if !d.user.is_empty() {
-        Command::new("su").args(["-c", &d.exec, &d.user]).spawn()
-    } else {
-        Command::new(parts[0]).args(&parts[1..]).spawn()
-    };
-
-    match spawn_result {
+    match spawn_daemon_process(d) {
         Ok(child) => {
             children.insert(d.name.clone(), ChildInfo {
                 child,
@@ -374,5 +410,40 @@ pub fn main() {
         }
 
         std::thread::sleep(Duration::from_secs(poll_interval));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn principal_is_exported_to_a_privilege_dropped_daemon() {
+        let daemon = DaemonConfig {
+            name: "agent".to_string(),
+            exec: "/bin/boos-agent resident".to_string(),
+            user: "boos-agent".to_string(),
+            principal: "resident".to_string(),
+            restart: "always".to_string(),
+            enabled: true,
+        };
+
+        assert_eq!(
+            privilege_dropped_command(&daemon),
+            "BOOS_PRINCIPAL_ID=resident /bin/boos-agent resident"
+        );
+    }
+
+    #[test]
+    fn invalid_principal_cannot_enter_a_daemon_command() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), "agent".to_string());
+        fields.insert("exec".to_string(), "/bin/boos-agent resident".to_string());
+        fields.insert("user".to_string(), "boos-agent".to_string());
+        fields.insert("principal".to_string(), "resident;reboot".to_string());
+        fields.insert("restart".to_string(), "always".to_string());
+        fields.insert("enabled".to_string(), "1".to_string());
+
+        assert!(daemon_config_from_fields(&fields).is_err());
     }
 }

@@ -13,6 +13,18 @@ output=$4
 build_commit=$5
 source_date_epoch=$6
 
+absolute_path() {
+    case "$1" in
+        /*) printf '%s\n' "$1" ;;
+        *) printf '%s/%s\n' "$(pwd -P)" "$1" ;;
+    esac
+}
+
+base_initramfs=$(absolute_path "$base_initramfs")
+rootfs_dir=$(absolute_path "$rootfs_dir")
+boos_binary=$(absolute_path "$boos_binary")
+output=$(absolute_path "$output")
+
 for required_file in "$base_initramfs" "$rootfs_dir/init" "$boos_binary"; do
     if [ ! -e "$required_file" ]; then
         echo "missing build input: $required_file" >&2

@@ -88,7 +88,6 @@ fn derives_paths_below_the_validated_principal_root() {
     assert_eq!(context.id().as_str(), "resident");
     assert_eq!(context.uid(), 101);
     assert_eq!(context.gid(), 101);
-    assert_eq!(context.user(), "resident-user");
     assert_eq!(context.runtime_root(), Path::new("/runtime/resident"));
     assert_eq!(context.memory_root(), Path::new("/runtime/resident/memory"));
     assert_eq!(
