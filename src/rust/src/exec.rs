@@ -468,11 +468,12 @@ fn run_builtin(context: &PrincipalContext, exec_target: &str, args: &str) -> i32
 fn identity_cmd() {
     println!("=== BoOS Self-Identity ===");
     println!("session: agent-{}", std::process::id());
-    println!("trusted-core: boos-gateway");
     println!("trusted-core: boos-supervisor");
+    println!("resident-lifecycle: boos-agent");
+    println!("optional-adapter: boos-gateway");
     println!("protected-regions: /etc /bin /sbin /usr /lib /boot /proc");
-    println!("protected-regions: /var/boos/results /var/boos/memory /var/log");
-    println!("boundary: session-id + trusted-cores + protected-paths");
+    println!("protected-regions: /var/boos/principals /var/log");
+    println!("boundary: linux-identity + principal-owned-state + capability-policy");
     println!("=== End Identity ===");
 }
 

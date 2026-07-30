@@ -852,25 +852,18 @@ mod tests {
 
     #[test]
     fn attack_11_forge_audit_log() {
-        // FIXED: /var/boos/results is now protected
-        let r = execute_develop_action("WRITE /var/boos/results/req-fake.out forged");
-        // Will be blocked on Linux (path exists), may error on macOS (path doesn't exist)
-        if r.contains("WRITE denied") {
-            // Linux/QEMU: path is protected
-        } else {
-            // macOS: directory doesn't exist, gets filesystem error — still not writable
-            assert!(!r.contains("WRITE ok"), "audit forge prevented");
-        }
+        let r = execute_develop_action(
+            "WRITE /var/boos/principals/resident/results/req-fake.out forged",
+        );
+        assert!(r.contains("WRITE denied"), "audit forge prevented: {}", r);
     }
 
     #[test]
     fn attack_12_pollute_memory() {
-        // FIXED: /var/boos/memory is now protected
-        let r = execute_develop_action("WRITE /var/boos/memory/working.kv fake");
-        if r.contains("WRITE denied") {
-        } else {
-            assert!(!r.contains("WRITE ok"), "memory pollute prevented");
-        }
+        let r = execute_develop_action(
+            "WRITE /var/boos/principals/resident/memory/working.kv fake",
+        );
+        assert!(r.contains("WRITE denied"), "memory pollution prevented: {}", r);
     }
 
     #[test]
@@ -920,9 +913,15 @@ mod tests {
     }
 
     #[test]
-    fn attack_17_symlink_follow() {
-        let r = execute_develop_action("WRITE /tmp/../var/boos/results/../memory/../log bypass");
-        println!("SANDBOX ESCAPE: {}", r);
+    fn attack_17_principal_state_traversal() {
+        let r = execute_develop_action(
+            "WRITE /tmp/../var/boos/principals/resident/results/../memory/working.kv bypass",
+        );
+        assert!(
+            r.contains("WRITE denied"),
+            "normalized traversal must not reach principal state: {}",
+            r
+        );
     }
 
     // ═══════════════════════════════════ ROUND 3: PATH NORMALIZATION ═══

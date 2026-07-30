@@ -67,6 +67,8 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/lib",
     "/boot",
     "/proc",
+    PRINCIPAL_RUNTIME_DIR,
+    // Retain the pre-principal paths as protected during manual migrations.
     "/var/boos/requests",
     "/var/boos/results",
     "/var/boos/memory",
@@ -162,10 +164,25 @@ mod path_tests {
     fn test_is_not_protected_var() {
         // /var itself is NOT protected — agent can create /var/scripts etc
         assert!(!is_protected_path("/var/scripts/myscript.sh"));
-        // But /var/boos/results IS protected (must use submit pipeline)
+        // Legacy shared state remains protected during manual migrations.
         assert!(is_protected_path("/var/boos/results/req-1.out"));
-        // Requests must also enter through submit so metadata cannot be forged.
         assert!(is_protected_path("/var/boos/requests/req-forged"));
+    }
+
+    #[test]
+    fn principal_owned_state_cannot_be_written_through_the_generic_file_api() {
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/results/req-forged.out"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/requests/req-forged"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/memory/working.kv"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/status.kv"
+        ));
     }
 
     #[cfg(unix)]
