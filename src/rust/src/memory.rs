@@ -14,7 +14,6 @@ use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config;
 use crate::log;
 use crate::memory_namespace::MemoryNamespace;
 
