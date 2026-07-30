@@ -9,7 +9,7 @@
 skill 共享与隔离：
 
 ```text
-Linux UID/GID
+Linux effective UID
   → BoOS principal
   → principal-owned memory / requests / results
   → per-principal skill view（下一阶段）
@@ -18,7 +18,7 @@ Linux UID/GID
 ## 已完成
 
 - 产品开机启动 `resident` principal，不依赖外部 TCP 客户端；
-- principal 身份由配置和 effective UID/GID 共同验证；
+- principal 身份由配置和 effective UID 共同验证，重复 UID 配置会被拒绝；
 - memory、request spool、result spool 按 principal 隔离；
 - request 正文不能伪造 owner；
 - supervisor 内建队列处理，不再依赖旧 shell daemon；
@@ -114,8 +114,9 @@ authentication、FETCH allowlist 和 secret ownership 仍然有效，但它们�
   → results/
 ```
 
-环境变量只选择 principal；UID/GID 才是信任锚。`requester` 是 trace 字段，
-spool owner 才决定 request 和 result 属于谁。
+环境变量只选择 principal；effective UID 才是身份锚。配置 GID 用于可信
+processor 降权和结果组权限。`requester` 是 trace 字段，spool owner 才决定
+request 和 result 属于谁。
 
 ## 当前能力与限度
 
@@ -159,7 +160,7 @@ Probe**。新的比较实验必须从真实任务采样，包含 BoOS 可能无�
 | [`../SEED.md`](../SEED.md) | 当前 runtime、信任边界、构建和代码地图 |
 | [`superpowers/specs/2026-07-30-boos-resident-principal-boundary-design.md`](superpowers/specs/2026-07-30-boos-resident-principal-boundary-design.md) | 已批准 principal boundary 设计 |
 | [`superpowers/plans/2026-07-30-boos-resident-principal-boundary.md`](superpowers/plans/2026-07-30-boos-resident-principal-boundary.md) | 分步实现与验证计划 |
-| [`../src/rust/src/principal.rs`](../src/rust/src/principal.rs) | UID/GID principal identity |
+| [`../src/rust/src/principal.rs`](../src/rust/src/principal.rs) | effective-UID-backed principal identity |
 | [`../src/rust/src/resident_agent.rs`](../src/rust/src/resident_agent.rs) | resident lifecycle |
 | [`../src/rust/src/supervisor.rs`](../src/rust/src/supervisor.rs) | workload 与 queue orchestration |
 | [`../tests/evidence/README.md`](../tests/evidence/README.md) | 研究证据规则 |

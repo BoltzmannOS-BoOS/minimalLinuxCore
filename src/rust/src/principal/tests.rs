@@ -126,6 +126,27 @@ fn duplicate_principal_ids_are_rejected() {
 }
 
 #[test]
+fn duplicate_principal_uids_are_rejected() {
+    let directory = FixtureDirectory::new(&[
+        (
+            "resident.principal",
+            "id=resident\nuser=boos-agent\nuid=101\ngid=101\nenabled=1\n",
+        ),
+        (
+            "shadow.principal",
+            "id=shadow\nuser=shadow-agent\nuid=101\ngid=102\nenabled=1\n",
+        ),
+    ]);
+
+    assert_eq!(
+        load_definitions_from(directory.path())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+}
+
+#[test]
 fn definition_requires_complete_typed_fields() {
     let directory = FixtureDirectory::new(&[
         (

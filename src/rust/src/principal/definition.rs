@@ -24,11 +24,15 @@ pub fn load_definitions_from(directory: &Path) -> io::Result<Vec<PrincipalDefini
 
     let mut definitions = Vec::with_capacity(paths.len());
     let mut seen_ids = HashSet::new();
+    let mut seen_uids = HashSet::new();
     for path in paths {
         let fields = parse_definition_fields(&fs::read_to_string(&path)?)?;
         let definition = definition_from_fields(&fields)?;
         if !seen_ids.insert(definition.id.clone()) {
             return Err(invalid_data("duplicate principal ID"));
+        }
+        if !seen_uids.insert(definition.uid) {
+            return Err(invalid_data("duplicate principal UID"));
         }
         definitions.push(definition);
     }

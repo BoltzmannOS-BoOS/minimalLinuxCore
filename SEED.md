@@ -79,11 +79,12 @@ enabled=1
 
 1. ID 语法合法；
 2. 定义存在且启用；
-3. 当前进程的 effective UID/GID 与定义相符；
-4. supplementary groups 不会保留越权读取能力。
+3. 当前进程的 effective UID 与定义相符，且不同 principal 不能配置重复 UID；
+4. 配置 GID 用于可信 supervisor/processor 的降权和结果组权限；
+5. processor 子进程会清除 root 的 supplementary groups。
 
 验证失败时，所有有状态命令 fail closed。兼容变量 `BOOS_AGENT_ID` 仅在主变量
-缺失时使用，也必须通过相同的 UID/GID 验证。
+缺失时使用，也必须通过相同的 effective UID 验证。
 
 请求记录中的 `requester` 只用于追踪。请求属于哪个 principal，由它所在的
 spool 决定；root processor 可以遍历所有已启用 spool，但结果仍写回原
@@ -159,7 +160,7 @@ gateway 用于调试、历史客户端和模型 API 代理。没有 token 时只
 
 ## 安全边界
 
-- Linux UID/GID 是 principal 身份锚点。
+- Linux effective UID 是 principal 身份锚点；配置 GID 用于降权和文件组权限。
 - 每个 principal 的 memory、requests、results 目录互相隔离。
 - 编译期 immutable deny 封锁不可逆能力。
 - `/etc/boos` 的 capability policy 决定命令可用性。
@@ -226,7 +227,7 @@ tests/boot/verify-initramfs.sh \
 
 | 文件 | 责任 |
 |---|---|
-| `src/rust/src/principal.rs` | principal 定义、UID/GID 验证、运行路径 |
+| `src/rust/src/principal.rs` | principal 定义、effective UID 验证、运行路径 |
 | `src/rust/src/resident_agent.rs` | ready 与 heartbeat 生命周期 |
 | `src/rust/src/memory.rs` | working/recent/archive 行为 |
 | `src/rust/src/memory_namespace.rs` | principal memory 路径边界 |

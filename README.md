@@ -47,7 +47,7 @@ different question:
 
 The first answer is deliberately small:
 
-- an identity anchored in Linux UID/GID, not a caller-provided label;
+- an identity anchored in Linux effective UID, not a caller-provided label;
 - private memory, request, and result namespaces;
 - local boot and progress independent of remote connectivity;
 - stable capability and semantic-object interfaces;
