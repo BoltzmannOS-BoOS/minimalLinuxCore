@@ -174,45 +174,118 @@ mod path_tests {
 }
 
 /// Check if a path is under a protected directory.
-/// Uses normalize_path for lexical comparison, then canonicalize()
-/// to resolve symlinks if the path already exists on disk.
+/// Uses lexical comparison first, then resolves symlinks component by
+/// component. Resolving only the complete path is insufficient for a new file:
+/// its parent may already be a symlink into a protected directory.
 pub fn is_protected_path(path: &str) -> bool {
     let normalized = normalize_path(path);
     let lower = normalized.to_lowercase();
 
-    // Check against lexical path first (always works)
     if prefix_matches_protected(&lower) {
         return true;
     }
 
-    // If path exists, resolve symlinks and check canonical path
-    if let Ok(real) = std::fs::canonicalize(path) {
-        if let Some(real_str) = real.to_str() {
-            let real_lower = real_str.to_lowercase();
-            if real_lower != lower {
-                return prefix_matches_protected(&real_lower);
-            }
-        }
-    }
-
-    false
+    let resolved = match resolve_policy_path(&normalized) {
+        Some(path) => path.to_lowercase(),
+        None => return true,
+    };
+    prefix_matches_resolved_protected(&resolved)
 }
 
 fn prefix_matches_protected(lower: &str) -> bool {
-    for dir in PROTECTED_DIRS {
-        let dirl = dir.to_lowercase();
-        if lower.starts_with(&dirl) && (lower.len() == dirl.len() || lower.as_bytes()[dirl.len()] == b'/') {
-            return true;
+    PROTECTED_DIRS
+        .iter()
+        .any(|dir| path_has_prefix(lower, &dir.to_lowercase()))
+}
+
+fn prefix_matches_resolved_protected(lower: &str) -> bool {
+    PROTECTED_DIRS.iter().any(|dir| {
+        let resolved_dir = resolve_policy_path(dir)
+            .unwrap_or_else(|| normalize_path(dir))
+            .to_lowercase();
+        path_has_prefix(lower, &resolved_dir)
+    })
+}
+
+fn path_has_prefix(path: &str, prefix: &str) -> bool {
+    path.starts_with(prefix)
+        && (path.len() == prefix.len() || path.as_bytes().get(prefix.len()) == Some(&b'/'))
+}
+
+/// Resolve symlink components for policy comparison without requiring the
+/// final target to exist. A bounded traversal fails closed on loops.
+fn resolve_policy_path(path: &str) -> Option<String> {
+    use std::ffi::OsString;
+    use std::path::{Component, Path, PathBuf};
+
+    const MAX_SYMLINKS: usize = 40;
+    let mut pending = PathBuf::from(normalize_path(path));
+
+    for _ in 0..MAX_SYMLINKS {
+        let components: Vec<OsString> = pending
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(name) => Some(name.to_os_string()),
+                _ => None,
+            })
+            .collect();
+        let mut current = PathBuf::from("/");
+        let mut redirected = false;
+
+        for (index, component) in components.iter().enumerate() {
+            current.push(component);
+            match std::fs::symlink_metadata(&current) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    let target = std::fs::read_link(&current).ok()?;
+                    let mut next = if target.is_absolute() {
+                        target
+                    } else {
+                        current.parent().unwrap_or(Path::new("/")).join(target)
+                    };
+                    for remaining in components.iter().skip(index + 1) {
+                        next.push(remaining);
+                    }
+                    pending = PathBuf::from(normalize_path(next.to_string_lossy().as_ref()));
+                    redirected = true;
+                    break;
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Some(normalize_path(pending.to_string_lossy().as_ref()));
+                }
+                Err(_) => return None,
+            }
+        }
+
+        if !redirected {
+            return Some(normalize_path(pending.to_string_lossy().as_ref()));
         }
     }
-    false
+
+    None
 }
 
 /// Check if a path is a protected read path (secrets that must not be read).
 pub fn is_protected_read_path(path: &str) -> bool {
     let normalized = normalize_path(path);
     let lower = normalized.to_lowercase();
-    PROTECTED_READ_PATHS.iter().any(|p| lower == p.to_lowercase())
+    if PROTECTED_READ_PATHS
+        .iter()
+        .any(|protected| lower == protected.to_lowercase())
+    {
+        return true;
+    }
+
+    let resolved = match resolve_policy_path(&normalized) {
+        Some(path) => path.to_lowercase(),
+        None => return true,
+    };
+    PROTECTED_READ_PATHS.iter().any(|protected| {
+        let resolved_protected = resolve_policy_path(protected)
+            .unwrap_or_else(|| normalize_path(protected))
+            .to_lowercase();
+        resolved == resolved_protected
+    })
 }
 
 #[test]
