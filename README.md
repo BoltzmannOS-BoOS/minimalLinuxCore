@@ -114,7 +114,7 @@ boos-agent loop \
 
 ```
 /init (shell) → boos-supervisor (Rust, pid1)
-  ├── boos-gateway (TCP :5555)     ← AI entry point
+  ├── boos-gateway (TCP :5555)     ← local AI entry point / authenticated remote entry
   ├── boos-process (poll loop)      ← request execution
   ├── boos-agent (autonomous)       ← self-exploring agent
   └── boos-exec                     ← command dispatcher
@@ -122,10 +122,19 @@ boos-agent loop \
 Storage:
   /etc/boos/commands/*.cmd          ← command registry
   /etc/boos/capabilities.conf       ← permission model
-  /var/boos/memory/working.kv       ← session state
-  /var/boos/memory/recent/*.kv      ← observation stream
-  /var/boos/memory/archive/*.mem    ← persistent knowledge
+  /var/boos/memory/[<agent>/]        ← default or isolated agent namespace
+    ├── working.kv                   ← session state
+    ├── recent/*.kv                  ← observation stream
+    └── archive/*.mem                ← persistent knowledge
 ```
+
+The gateway is fail-closed for remote access. Without
+`/etc/boos/gateway_token` (or `BOOS_GATEWAY_TOKEN`) it listens only on
+`127.0.0.1`; with a non-empty token it listens externally and remote clients
+must send `AUTH <token>` before their command. `FETCH` is disabled by default.
+Operators must provide an exact comma-separated `BOOS_FETCH_ALLOWLIST`; the
+gateway then permits only HTTPS on port 443 to those hostnames and rejects
+hosts that resolve to non-public addresses.
 
 ## Current Research: Semantic Object Layer
 

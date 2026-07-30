@@ -97,7 +97,7 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     ctx.push_str("\nRespond with ONE of these action formats:\n");
     ctx.push_str("  READ <filepath>           — read a source file\n");
     ctx.push_str("  WRITE <filepath> <content> — create/overwrite a file\n");
-    ctx.push_str("  FETCH <url>               — get HTTPS data from web\n");
+    ctx.push_str("  FETCH <url>               — get allowlisted HTTPS context (may be disabled)\n");
     ctx.push_str("  BUILD                     — run cargo build\n");
     ctx.push_str("  TEST                      — run cargo test\n");
   ctx.push_str("  CHECKPOINTS               — list saved states
@@ -207,7 +207,7 @@ fn execute_develop_action(action: &str) -> String {
     } else if upper.starts_with("FETCH") {
         let url = action[6..].trim();
         if url.is_empty() { return "FETCH: url required".to_string(); }
-        // Route through gateway — enforces HTTPS-only, SSRF protection, size cap
+        // Route through gateway — default-deny host policy and response size cap.
         use std::io::{Write, BufRead, BufReader};
         match std::net::TcpStream::connect("127.0.0.1:5555") {
             Ok(mut s) => {

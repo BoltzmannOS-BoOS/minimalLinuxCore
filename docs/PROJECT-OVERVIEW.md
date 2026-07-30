@@ -72,7 +72,7 @@ Agent 进程（boos-agent 用户）          Gateway 进程（boos-gateway 用�
 | 文件读写 | READ / WRITE / LIST / STAT | ✅ |
 | 代码编译 | cargo BUILD / TEST | ✅ |
 | AI 调用 | DEEPSEEK（gateway 代理） | ✅ |
-| 只读网络 | FETCH（HTTPS only，无 SSRF，64KB 上限） | ✅ |
+| 受限外部上下文 | FETCH（默认关闭；仅回环调用、HTTPS 精确域名白名单、公共地址校验、64KB 上限） | ✅ |
 | 进程感知 | proc-list（只读，观察不干涉） | ✅ |
 | 自我验证 | auto-attack + 进化引擎 | ✅ |
 | 记忆 | remember / recall / observe | ✅ |
@@ -133,7 +133,7 @@ AI 应该知道自己的上下文窗口快满了，该压缩或委派了。BoOS 
 agent 应该说"这个 RSS 有更新就通知我"，而不是用 FETCH 轮询。BoOS 需要 Subscribe 接口吗？
 
 ```
-当前: FETCH 是一次性的 HTTPS GET
+当前: FETCH 是一次性的 HTTPS GET，默认关闭；管理员必须配置精确域名白名单。
 期望: 订阅外部数据源，有变化时主动通知 agent
 挑战: 事件驱动的 agent 怎么被唤醒？
 ```
@@ -180,8 +180,8 @@ claims must use the Living Evidence System.
 语言:     Rust (std only, 0 external crates except ureq)
 二进制:   x86_64-unknown-linux-musl, 2.1MB static-pie
 编译:     Docker --platform linux/amd64
-测试:     139 单元测试, 88 次攻击覆盖
-QEMU:     Alpine 6.12.91 kernel, e1000 网络, TCP 5555
+测试:     167 单元测试, 22 项真实 QEMU 启动/网关行为
+QEMU:     Alpine 6.12.91 kernel, virtio 网络, TCP 5555（远程访问强制认证）
 文件:     33 commits on main, GitHub: BoltzmannOS-BoOS/minimalLinuxCore
 SEED:     23 原则, 5 增长规则, 4 成本自指, 52 条精炼日志
 ```
