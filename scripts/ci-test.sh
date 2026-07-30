@@ -28,7 +28,7 @@ qemu-system-x86_64 \
   -append "console=ttyS0 rdinit=/init" \
   -drive file=build/var.img,format=raw,if=virtio,cache=directsync \
   -netdev user,id=net0,hostfwd=tcp::${GATEWAY_PORT}-:5555 \
-  -device virtio-net,netdev=net0 \
+  -device e1000,netdev=net0 \
   -nographic \
   -no-reboot \
   > build/ci-qemu.log 2>&1 &
@@ -50,19 +50,18 @@ done
 
 failures=0
 test_cmd() {
-    local cmd="$1"
-    local expected="$2"
-    local desc="$3"
-    printf "  %-25s " "$desc"
-    local output
-    output=$(echo "$cmd" | nc -w 3 127.0.0.1 ${GATEWAY_PORT} 2>/dev/null || echo "ERROR: nc failed")
-    if echo "$output" | grep -q "$expected"; then
+    test_command=$1
+    expected_pattern=$2
+    test_description=$3
+    printf "  %-25s " "$test_description"
+    command_output=$(echo "$test_command" | nc -w 3 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null || echo "ERROR: nc failed")
+    if echo "$command_output" | grep -q "$expected_pattern"; then
         echo "PASS"
     else
         echo "FAIL"
-        echo "    sent:     $cmd"
-        echo "    expected: $expected"
-        echo "    got:      $(echo "$output" | head -3 | tr '\n' ' ')"
+        echo "    sent:     $test_command"
+        echo "    expected: $expected_pattern"
+        echo "    got:      $(echo "$command_output" | head -3 | tr '\n' ' ')"
         failures=$((failures + 1))
     fi
 }

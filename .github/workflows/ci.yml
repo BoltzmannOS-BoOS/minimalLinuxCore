@@ -1,94 +1,93 @@
 name: BoOS CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boos-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  unit-tests:
+  rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo test
+      - name: Test
         working-directory: src/rust
+        run: cargo test --locked --all-targets
+      - name: Release build
+        working-directory: src/rust
+        run: cargo build --locked --release
 
-  release-build:
+  boot:
     runs-on: ubuntu-latest
+    needs: rust
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo build --release 2>&1 | tee /tmp/build.log
+        with:
+          target: x86_64-unknown-linux-musl
+
+      - name: Install boot test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cpio e2fsprogs musl-tools qemu-system-x86
+
+      - name: Build static BoOS binary
         working-directory: src/rust
-      - run: |
-          if grep -q 'warning:' /tmp/build.log; then
-            echo "BUILD HAS WARNINGS"; grep 'warning:' /tmp/build.log; exit 1
-          fi
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
 
-  docker-qemu:
-    runs-on: ubuntu-latest
-    needs: [unit-tests, release-build]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Docker cross-compile (musl)
+      - name: Fetch Alpine kernel and base initramfs
         run: |
-          docker run --rm -v "$PWD":/work -w /work/src/rust rust:alpine \
-            sh -c 'apk add --no-cache musl-dev && cargo build --release'
-
-      - name: Build merged initramfs (Alpine kernel modules + BoOS)
-        run: |
-          # Fetch Alpine kernel with virtio_net/blk/ext4 modules
-          docker run --rm -v "$PWD":/out alpine:3.21 sh -c '
-            apk add --no-cache linux-virt > /dev/null 2>&1
-            cp /boot/vmlinuz-virt /out/build/vmlinuz
-            cp /boot/initramfs-virt /out/build/initramfs-virt
+          mkdir -p build
+          docker run --rm -v "$PWD/build:/out" alpine:3.21 sh -euc '
+            apk add --no-cache linux-virt
+            cp /boot/vmlinuz-virt /out/vmlinuz
+            cp /boot/initramfs-virt /out/initramfs-virt
           '
-          # Install binary, create symlinks, merge initramfs
-          cp src/rust/target/release/boos rootfs/bin/boos
-          cd rootfs/bin && for n in boos-exec boos-process boos-submit boos-gateway boos-supervisor boos-shell boos-agent; do ln -sf boos "$n"; done && cd ../..
+
+      - name: Assemble traceable initramfs from repository rootfs
+        run: |
+          source_date_epoch=$(git show -s --format=%ct "$GITHUB_SHA")
           docker run --rm \
-            -v "$PWD/rootfs":/boos \
-            -v "$PWD/build":/data \
-            alpine sh -c '
-            mkdir /merged && cd /merged
-            zcat /data/initramfs-virt | cpio -idm 2>/dev/null
-            cd /boos && find . -not -name ".DS_Store" | cpio -pmd /merged 2>/dev/null
-            cat > /merged/init << "X"
-#!/bin/sh
-/bin/busybox mkdir -p /proc /sys /dev /tmp /var /etc/boos
-/bin/busybox mount -t proc proc /proc
-/bin/busybox mount -t sysfs sysfs /sys
-/bin/busybox mount -t devtmpfs devtmpfs /dev
-/bin/busybox modprobe virtio_net 2>/dev/null
-/bin/busybox modprobe virtio_blk 2>/dev/null
-/bin/busybox modprobe ext4 2>/dev/null
-/bin/busybox ifconfig lo up
-/bin/busybox ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up 2>/dev/null
-/bin/busybox route add default gw 10.0.2.2 2>/dev/null
-echo "nameserver 10.0.2.3" > /etc/resolv.conf
-echo "=== BOOT ==="
-/bin/boos-gateway 5555 &
-sleep 2
-echo "=== GATEWAY TEST ==="
-echo "help" | /bin/busybox nc -w 3 127.0.0.1 5555 | head -3
-echo "status" | /bin/busybox nc -w 3 127.0.0.1 5555 | grep kernel
-echo "=== AGENT LOOP ==="
-/bin/boos-agent loop --goal "Run help" --max-loops 2 2>&1 | head -15
-echo "=== CI PASS ==="
-X
-            chmod +x /merged/init
-            cd /merged && find . | cpio -H newc -o | gzip > /data/initramfs-merged.cpio.gz
-            echo "initramfs: $(ls -lh /data/initramfs-merged.cpio.gz | awk "{print \$5}")"
-          '
+            -v "$PWD:/work" \
+            -w /work \
+            alpine:3.21 sh -euc '
+              apk add --no-cache coreutils cpio findutils
+              scripts/assemble-initramfs.sh \
+                build/initramfs-virt \
+                rootfs \
+                src/rust/target/x86_64-unknown-linux-musl/release/boos \
+                build/initramfs.cpio.gz \
+                "$1" \
+                "$2"
+            ' sh "$GITHUB_SHA" "$source_date_epoch"
 
-      - name: QEMU integration test
+      - name: Verify initramfs provenance
         run: |
-          timeout 60 qemu-system-x86_64 \
-            -kernel build/vmlinuz \
-            -initrd build/initramfs-merged.cpio.gz \
-            -append "console=ttyS0 rdinit=/init" \
-            -netdev user,id=net0 -device virtio-net,netdev=net0 \
-            -nographic -no-reboot 2>&1 | tee /tmp/qemu.log
-          grep -q "BoOS commands" /tmp/qemu.log && echo "GATEWAY OK"
-          grep -q "kernel:" /tmp/qemu.log && echo "STATUS OK"
-          grep -q "Loop 1/2" /tmp/qemu.log && echo "AGENT OK"
-          grep -q "CI PASS" /tmp/qemu.log && echo "ALL OK" || (echo "FAILED"; exit 1)
+          tests/boot/verify-initramfs.sh \
+            build/initramfs.cpio.gz \
+            rootfs/init \
+            src/rust/target/x86_64-unknown-linux-musl/release/boos \
+            "$GITHUB_SHA"
+
+      - name: Create disposable persistent disk
+        run: |
+          truncate --size 64M build/var.img
+          mkfs.ext2 -F build/var.img
+
+      - name: Boot real init and exercise gateway
+        run: scripts/ci-test.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boos-x86_64-${{ github.sha }}
+          path: |
+            build/vmlinuz
+            build/initramfs.cpio.gz
+          if-no-files-found: error
