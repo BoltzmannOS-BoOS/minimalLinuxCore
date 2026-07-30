@@ -1,10 +1,10 @@
 use std::fs;
-use std::io::{self, Read};
-use std::os::unix::process::ExitStatusExt as _;
+use std::io;
 use std::path::Path;
 use std::process;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::bounded_process;
 use crate::config;
 use crate::log;
 use crate::queue_lock::QueueProcessorLock;
@@ -16,63 +16,32 @@ use crate::registry;
 /// Reads stdout and stderr concurrently via threads to avoid pipe-buffer deadlock:
 /// if the child fills stderr before stdout, sequential read would block forever.
 fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
-    let mut child = match process::Command::new(cmd)
-        .args(args)
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => return (format!("Failed to spawn: {}", e), 1, false),
+    let mut command = process::Command::new(cmd);
+    command.args(args);
+    let captured = match bounded_process::run_with_limits(
+        &mut command,
+        config::MAX_OUTPUT_BYTES,
+        Duration::from_secs(config::QUEUE_CHILD_TIMEOUT_SECS),
+    ) {
+        Ok(captured) => captured,
+        Err(error) => {
+            return (
+                format!("Failed to execute child process: {}", error),
+                config::EXIT_ERROR,
+                false,
+            );
+        }
+    };
+    let truncated = captured.stdout_truncated || captured.stderr_truncated;
+    let exit_code = if captured.timed_out {
+        config::EXIT_ERROR
+    } else {
+        captured.status.code().unwrap_or(config::EXIT_ERROR)
     };
 
-    // Take ownership of pipes for thread-based concurrent reads
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-
-    let limit = config::MAX_OUTPUT_BYTES;
-
-    // Read stdout in a thread
-    let stdout_handle = std::thread::spawn(move || {
-        let mut buf = Vec::with_capacity(65536);
-        let mut truncated = false;
-        if let Some(pipe) = stdout_pipe {
-            let _ = pipe.take(limit as u64 + 1).read_to_end(&mut buf);
-            if buf.len() > limit {
-                truncated = true;
-                buf.truncate(limit);
-            }
-        }
-        (buf, truncated)
-    });
-
-    // Read stderr in a thread
-    let stderr_handle = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let mut truncated = false;
-        if let Some(pipe) = stderr_pipe {
-            let _ = pipe.take(limit as u64 + 1).read_to_end(&mut buf);
-            if buf.len() > limit {
-                truncated = true;
-                buf.truncate(limit);
-            }
-        }
-        (buf, truncated)
-    });
-
-    let (stdout_buf, stdout_trunc) = stdout_handle.join().unwrap_or((Vec::new(), false));
-    let (stderr_buf, stderr_trunc) = stderr_handle.join().unwrap_or((Vec::new(), false));
-    let truncated = stdout_trunc || stderr_trunc;
-
-    // Wait for child after pipes are drained
-    let status = child.wait().unwrap_or_else(|_| {
-        process::ExitStatus::from_raw(0x0100) // exit code 1 in raw wait status
-    });
-    let exit_code = status.code().unwrap_or(config::EXIT_ERROR);
-
     // Combine stdout and stderr
-    let mut output = String::from_utf8_lossy(&stdout_buf).to_string();
-    let err_out = String::from_utf8_lossy(&stderr_buf);
+    let mut output = String::from_utf8_lossy(&captured.stdout).to_string();
+    let err_out = String::from_utf8_lossy(&captured.stderr);
     if !err_out.is_empty() {
         if !output.is_empty() {
             output.push('\n');
@@ -81,7 +50,16 @@ fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
     }
 
     if truncated {
-        output.push_str(&format!("\n[truncated {}+ bytes]", limit));
+        output.push_str(&format!(
+            "\n[stdout or stderr truncated at {} bytes]",
+            config::MAX_OUTPUT_BYTES
+        ));
+    }
+    if captured.timed_out {
+        output.push_str(&format!(
+            "\n[terminated after {} seconds]",
+            config::QUEUE_CHILD_TIMEOUT_SECS
+        ));
     }
 
     (output, exit_code, truncated)

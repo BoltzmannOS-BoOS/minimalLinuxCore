@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use crate::bounded_process;
 use crate::config;
 use crate::gateway_policy::{
     special_protocol_allowed, validate_session_id, FetchPolicy,
@@ -287,10 +288,28 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
         cmd.arg(arg);
     }
 
-    match cmd.output() {
+    match bounded_process::run_with_limits(
+        &mut cmd,
+        config::MAX_OUTPUT_BYTES,
+        Duration::from_secs(config::GATEWAY_CHILD_TIMEOUT_SECS),
+    ) {
         Ok(output) => {
             let _ = stream.write_all(&output.stdout);
             let _ = stream.write_all(&output.stderr);
+            if output.stdout_truncated || output.stderr_truncated {
+                let _ = writeln!(
+                    stream,
+                    "\nGATEWAY: output truncated at {} bytes per stream",
+                    config::MAX_OUTPUT_BYTES
+                );
+            }
+            if output.timed_out {
+                let _ = writeln!(
+                    stream,
+                    "\nGATEWAY: command terminated after {} seconds",
+                    config::GATEWAY_CHILD_TIMEOUT_SECS
+                );
+            }
         }
         Err(e) => {
             let _ = writeln!(stream, "Gateway error: {}", e);

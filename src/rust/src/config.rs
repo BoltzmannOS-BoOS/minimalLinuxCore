@@ -17,6 +17,8 @@ pub const MAX_GATEWAY_URL_BYTES: usize = 2 * 1024;
 pub const MAX_GATEWAY_PROMPT_BYTES: usize = 32 * 1024;
 pub const MAX_GATEWAY_MODEL_RESPONSE_BYTES: u64 = 256 * 1024;
 pub const MAX_RUNTIME_ID_BYTES: usize = 64;
+pub const GATEWAY_CHILD_TIMEOUT_SECS: u64 = 30;
+pub const QUEUE_CHILD_TIMEOUT_SECS: u64 = 5 * 60;
 
 // Exit code contract for boos-exec. process.rs translates these to verdicts.
 // External programs invoked via `exec=/path/to/bin` may produce arbitrary
