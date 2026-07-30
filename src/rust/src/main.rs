@@ -15,6 +15,7 @@ mod process;
 mod gateway;
 mod supervisor;
 mod shell;
+mod memory_namespace;
 mod memory;
 mod agent;
 mod explore;

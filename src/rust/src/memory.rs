@@ -467,6 +467,7 @@ fn sanitize_value(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory_namespace::MemoryNamespace;
 
     #[test]
     fn test_working_memory_save_load() {
@@ -495,6 +496,31 @@ mod tests {
         assert_eq!(split_list(kv.get("goals").unwrap().clone()), vec!["goal1"]);
         assert_eq!(split_list(kv.get("active_facts").unwrap().clone()), vec!["fact1"]);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_agent_working_memory_round_trip_stays_in_agent_namespace() {
+        let dir = std::env::temp_dir().join(format!(
+            "boos-agent-memory-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let namespace = MemoryNamespace::new(&dir, Some("agent-a")).unwrap();
+        let mut original = WorkingMemory::new("session-a".into());
+        original.add_fact("isolated fact");
+
+        original.save_in(&namespace).unwrap();
+        let restored = WorkingMemory::load_from(&namespace).unwrap();
+
+        assert_eq!(restored.session_id, "session-a");
+        assert_eq!(restored.active_facts, vec!["isolated fact"]);
+        assert!(
+            !dir.join("working.kv").exists(),
+            "an agent-specific save must not write shared working memory"
+        );
+        assert!(namespace.working_path().exists());
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
