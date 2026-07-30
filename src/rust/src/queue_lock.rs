@@ -2,12 +2,16 @@ use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd;
 use std::os::raw::c_int;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 const LOCK_EXCLUSIVE: c_int = 2;
 const LOCK_NONBLOCKING: c_int = 4;
 const LOCK_UNLOCK: c_int = 8;
+#[cfg(target_os = "linux")]
+const SAFE_OPEN_FLAGS: c_int = 0o400000 | 0o4000; // O_NOFOLLOW | O_NONBLOCK
+#[cfg(not(target_os = "linux"))]
+const SAFE_OPEN_FLAGS: c_int = 0;
 
 extern "C" {
     fn flock(fd: c_int, operation: c_int) -> c_int;
@@ -48,19 +52,46 @@ impl Drop for QueueProcessorLock {
 }
 
 fn open_lock_file(path: &Path) -> io::Result<File> {
-    match OpenOptions::new().read(true).open(path) {
-        Ok(file) => Ok(file),
+    if fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "queue lock path must not be a symlink",
+        ));
+    }
+
+    match OpenOptions::new()
+        .read(true)
+        .custom_flags(SAFE_OPEN_FLAGS)
+        .open(path)
+    {
+        Ok(file) => require_regular_file(file),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             let file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
                 .truncate(false)
+                .custom_flags(SAFE_OPEN_FLAGS)
                 .open(path)?;
+            let file = require_regular_file(file)?;
             fs::set_permissions(path, fs::Permissions::from_mode(0o644))?;
             Ok(file)
         }
         Err(error) => Err(error),
+    }
+}
+
+fn require_regular_file(file: File) -> io::Result<File> {
+    if file.metadata()?.is_file() {
+        Ok(file)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "queue lock path is not a regular file",
+        ))
     }
 }
 
