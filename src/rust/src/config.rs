@@ -150,6 +150,27 @@ mod path_tests {
         // But /var/boos/results IS protected (must use submit pipeline)
         assert!(is_protected_path("/var/boos/results/req-1.out"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_nonexistent_write_below_symlinked_protected_parent_is_denied() {
+        use std::os::unix::fs::symlink;
+
+        let link = std::env::temp_dir().join(format!(
+            "boos-protected-parent-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&link);
+        symlink("/etc", &link).unwrap();
+
+        let target = link.join("boos-audit-nonexistent-file");
+        assert!(
+            is_protected_path(target.to_str().unwrap()),
+            "a nonexistent target below a symlink to /etc must remain protected"
+        );
+
+        std::fs::remove_file(link).unwrap();
+    }
 }
 
 /// Check if a path is under a protected directory.
@@ -215,4 +236,24 @@ fn test_read_protection_exact_match() {
     assert!(is_protected_read_path("/etc/boos/gateway_token"));
     assert!(!is_protected_read_path("/etc/passwd"));
     assert!(!is_protected_read_path("/tmp/test.txt"));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_read_protection_follows_symlink_to_secret() {
+    use std::os::unix::fs::symlink;
+
+    let link = std::env::temp_dir().join(format!(
+        "boos-protected-read-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&link);
+    symlink("/etc/boos/gateway_token", &link).unwrap();
+
+    assert!(
+        is_protected_read_path(link.to_str().unwrap()),
+        "a symlink must not make the gateway token readable"
+    );
+
+    std::fs::remove_file(link).unwrap();
 }
