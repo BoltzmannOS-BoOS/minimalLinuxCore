@@ -40,5 +40,13 @@ expect_failure "registration environment digest is malformed" \
     "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-environment-digest.kv"
 expect_failure "registration implementation commit is malformed" \
     "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-implementation-commit.kv"
+expect_failure "registration token budget is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-token-budget.kv"
+expect_failure "registration interaction budget is zero" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-zero-interaction-budget.kv"
+expect_failure "registration wall clock seconds are malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-wall-clock-seconds.kv"
+expect_failure "registration retry budget is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-retry-budget.kv"
 
 echo "evidence registration validator tests passed"
