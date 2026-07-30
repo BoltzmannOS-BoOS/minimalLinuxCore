@@ -42,7 +42,7 @@ pub fn load_request(path: &Path) -> io::Result<QueuedRequest> {
     }
 
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(MAX_REQUEST_BYTES + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_REQUEST_BYTES {
@@ -97,7 +97,7 @@ pub fn existing_result(results_dir: &Path, request_id: &str) -> io::Result<bool>
                 return Err(invalid_record("existing result exceeds its size limit"));
             }
             let mut content = String::new();
-            file.by_ref()
+            Read::by_ref(&mut file)
                 .take(MAX_RESULT_BYTES + 1)
                 .read_to_string(&mut content)?;
             if content.len() as u64 > MAX_RESULT_BYTES {
