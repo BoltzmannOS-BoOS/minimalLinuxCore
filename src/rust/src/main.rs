@@ -7,6 +7,7 @@ mod log;
 mod registry;
 mod world;
 mod world_sources;
+mod world_command;
 mod submit;
 mod exec;
 mod exec_file;
