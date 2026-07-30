@@ -46,6 +46,12 @@ EOF
 expect_failure "duplicate keys" \
     require_keys "$temporary_dir/duplicate.kv" "schema name"
 
+cat >"$temporary_dir/missing-required.kv" <<'EOF'
+schema=boos.evidence.test.v1
+EOF
+expect_failure "missing required key" \
+    require_keys "$temporary_dir/missing-required.kv" "schema name"
+
 cat >"$temporary_dir/unknown.kv" <<'EOF'
 schema=boos.evidence.test.v1
 name=value
@@ -53,6 +59,30 @@ surprise=value
 EOF
 expect_failure "unknown keys" \
     reject_unknown_keys "$temporary_dir/unknown.kv" "schema name"
+
+cat >"$temporary_dir/invalid-boolean.kv" <<'EOF'
+enabled=yes
+EOF
+expect_failure "invalid boolean" \
+    require_boolean "$temporary_dir/invalid-boolean.kv" enabled
+
+cat >"$temporary_dir/invalid-nonnegative-integer.kv" <<'EOF'
+count=-1
+EOF
+expect_failure "invalid non-negative integer" \
+    require_nonnegative_integer "$temporary_dir/invalid-nonnegative-integer.kv" count
+
+cat >"$temporary_dir/invalid-sha256.kv" <<'EOF'
+digest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeF
+EOF
+expect_failure "invalid SHA-256" \
+    require_sha256 "$temporary_dir/invalid-sha256.kv" digest
+
+cat >"$temporary_dir/invalid-git-commit.kv" <<'EOF'
+commit=0123456789abcdef0123456789abcdef0123456g
+EOF
+expect_failure "invalid Git commit" \
+    require_git_commit "$temporary_dir/invalid-git-commit.kv" commit
 
 cat >"$temporary_dir/absolute-path.kv" <<'EOF'
 schema=boos.evidence.test.v1
