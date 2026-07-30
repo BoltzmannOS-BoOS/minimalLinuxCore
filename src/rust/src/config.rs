@@ -12,6 +12,11 @@ pub const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1MB
 // runaway component can't fill the disk with one giant entry.
 pub const MAX_LOG_LINE_LEN: usize = 4096;
 pub const GATEWAY_DEFAULT_PORT: u16 = 5555;
+pub const MAX_GATEWAY_COMMAND_BYTES: usize = 8 * 1024;
+pub const MAX_GATEWAY_URL_BYTES: usize = 2 * 1024;
+pub const MAX_GATEWAY_PROMPT_BYTES: usize = 32 * 1024;
+pub const MAX_GATEWAY_MODEL_RESPONSE_BYTES: u64 = 256 * 1024;
+pub const MAX_RUNTIME_ID_BYTES: usize = 64;
 
 // Exit code contract for boos-exec. process.rs translates these to verdicts.
 // External programs invoked via `exec=/path/to/bin` may produce arbitrary
@@ -34,6 +39,16 @@ pub const MAX_GATEWAY_THREADS: usize = 64;
 
 // Agent memory system paths
 pub const MEMORY_DIR: &str = "/var/boos/memory";
+
+pub fn is_valid_runtime_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_RUNTIME_ID_BYTES
+        && id != "."
+        && id != ".."
+        && id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
 
 // BIOS: hardcoded boundaries. Cannot be overridden by any file.
 // Only actions that cause irreversible damage belong here.

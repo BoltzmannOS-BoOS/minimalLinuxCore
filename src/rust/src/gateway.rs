@@ -1,5 +1,5 @@
 use std::env;
-use std::io::{BufRead, BufReader, Write, Read};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
 use std::sync::Arc;
@@ -7,6 +7,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crate::config;
+use crate::gateway_policy::{
+    special_protocol_allowed, validate_session_id, FetchPolicy,
+};
 use crate::log;
 
 /// Read the gateway auth token from env or config. If not set, auth is disabled.
@@ -37,33 +40,61 @@ fn load_api_key() -> Option<String> {
         })
 }
 
-// ── FETCH: read-only network proxy (agent cannot exfiltrate) ───────────────
+fn read_protocol_line<R: BufRead>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> io::Result<Option<String>> {
+    let mut line = String::new();
+    let bytes_read = reader
+        .take(max_bytes as u64 + 1)
+        .read_line(&mut line)?;
+    if bytes_read == 0 {
+        return Ok(None);
+    }
+    if bytes_read > max_bytes || !line.ends_with('\n') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "protocol line exceeds its limit or is incomplete",
+        ));
+    }
+    line.pop();
+    if line.ends_with('\r') {
+        line.pop();
+    }
+    Ok(Some(line))
+}
+
+// ── FETCH: explicitly allowlisted HTTPS retrieval ──────────────────────────
 
 fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
-    let mut url = String::new();
-    if reader.read_line(&mut url).is_err() {
-        let _ = writeln!(stream, "GATEWAY: protocol error");
+    let url = match read_protocol_line(reader, config::MAX_GATEWAY_URL_BYTES) {
+        Ok(Some(url)) => url,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid FETCH URL frame");
+            return;
+        }
+    };
+    let policy = match FetchPolicy::from_environment() {
+        Ok(policy) => policy,
+        Err(error) => {
+            let _ = writeln!(stream, "GATEWAY: {}", error);
+            return;
+        }
+    };
+    let validated = match policy.validate_url(&url) {
+        Ok(validated) => validated,
+        Err(error) => {
+            let _ = writeln!(stream, "GATEWAY: {}", error);
+            return;
+        }
+    };
+    if let Err(error) = policy.require_public_resolution(&validated) {
+        let _ = writeln!(stream, "GATEWAY: {}", error);
         return;
     }
-    let url = url.trim().to_string();
-    if url.is_empty() {
-        let _ = writeln!(stream, "GATEWAY: empty URL");
-        return;
-    }
-    // Defenses: HTTPS only, no localhost, strip query params
-    if !url.starts_with("https://") {
-        let _ = writeln!(stream, "GATEWAY: only HTTPS allowed (read-only)");
-        return;
-    }
-    if url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0") {
-        let _ = writeln!(stream, "GATEWAY: internal addresses blocked (SSRF)");
-        return;
-    }
-    // Strip query params to prevent data exfiltration via URL
-    let clean_url = if let Some(pos) = url.find('?') { &url[..pos] } else { &url };
-    // Max response size: 64KB (same as write cap)
+
     const MAX_FETCH_BYTES: usize = 64 * 1024;
-    match ureq::get(clean_url)
+    match ureq::get(&validated.url)
         .timeout(Duration::from_secs(10))
         .call()
     {
@@ -74,7 +105,9 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
             let mut buf = [0u8; 4096];
             let mut total = 0usize;
             while total < MAX_FETCH_BYTES {
-                match reader.read(&mut buf) {
+                let remaining = MAX_FETCH_BYTES - total;
+                let read_len = remaining.min(buf.len());
+                match reader.read(&mut buf[..read_len]) {
                     Ok(0) => break,
                     Ok(n) => {
                         body.extend_from_slice(&buf[..n]);
@@ -94,15 +127,23 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
 }
 
 fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
-    let mut sys = String::new();
-    let mut ctx = String::new();
-    if reader.read_line(&mut sys).is_err() || reader.read_line(&mut ctx).is_err() {
-        let _ = writeln!(stream, "GATEWAY: protocol error");
-        return;
-    }
+    let sys = match read_protocol_line(reader, config::MAX_GATEWAY_PROMPT_BYTES) {
+        Ok(Some(line)) => line,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid system prompt frame");
+            return;
+        }
+    };
+    let ctx = match read_protocol_line(reader, config::MAX_GATEWAY_PROMPT_BYTES) {
+        Ok(Some(line)) => line,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid context frame");
+            return;
+        }
+    };
     // Protocol escapes newlines as \n to keep single-line semantics
-    let sys = sys.trim().replace("\\n", "\n");
-    let ctx = ctx.trim().replace("\\n", "\n");
+    let sys = sys.replace("\\n", "\n");
+    let ctx = ctx.replace("\\n", "\n");
     println!("[gateway] DEEPSEEK request received");
     let key = match load_api_key() {
         Some(k) => { println!("[gateway] key found"); k }
@@ -119,13 +160,20 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
     {
         Ok(r) if r.status() == 200 => {
             let mut body = String::new();
-            if r.into_reader().read_to_string(&mut body).is_ok() {
+            let mut response = r
+                .into_reader()
+                .take(config::MAX_GATEWAY_MODEL_RESPONSE_BYTES + 1);
+            if response.read_to_string(&mut body).is_ok()
+                && body.len() as u64 <= config::MAX_GATEWAY_MODEL_RESPONSE_BYTES
+            {
                 if let Some(p) = body.find("\"content\":\"") {
                     let rest = &body[p+11..]; let mut i=0; let b=rest.as_bytes();
                     while i<b.len() { if b[i]==b'\\'&&i+1<b.len(){i+=2}else if b[i]==b'"'{break}else{i+=1} }
                     let raw = &rest[..i].replace("\\\"","\"");
                     let _ = writeln!(stream, "{}", raw.trim());
                 }
+            } else {
+                let _ = writeln!(stream, "GATEWAY: model response exceeds limit");
             }
             println!("[gateway] DEEPSEEK OK, response sent");
         }
@@ -141,7 +189,13 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
 }
 
 fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
-    let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_else(|_| "?".to_string());
+    let peer_address = stream.peer_addr().ok();
+    let peer = peer_address
+        .map(|address| address.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let trusted_local = peer_address
+        .map(|address| special_protocol_allowed(address.ip()))
+        .unwrap_or(false);
 
     // Set read timeout so a silent client can't hang the gateway
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
@@ -160,31 +214,27 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     };
     let mut reader = BufReader::new(cloned);
 
-    // Read first line (length-limited for robustness)
-    let mut line = String::new();
-    let mut limited = reader.by_ref().take(8192u64);
-    if limited.read_line(&mut line).is_err() || line.is_empty() {
-        return;
-    }
-    // Release the take() borrow so subsequent reads use the full reader
-    drop(limited);
-    // If line hit the cap without a newline, reject
-    if !line.ends_with('\n') {
-        let _ = writeln!(stream, "GATEWAY: line too long");
-        return;
-    }
-    // If line hit the cap without a newline, reject
-    if !line.ends_with('\n') {
-        let _ = writeln!(stream, "GATEWAY: line too long");
-        return;
-    }
-    let line = line.trim().to_string();
+    let line = match read_protocol_line(&mut reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+        Ok(Some(line)) => line.trim().to_string(),
+        Ok(None) => return,
+        Err(_) => {
+            let _ = writeln!(stream, "GATEWAY: invalid command frame");
+            return;
+        }
+    };
     if line.is_empty() {
         return;
     }
 
     // Dispatch: AUTH, SESSION, or command
-    let (command_line, session_id) = parse_protocol(&mut reader, &mut stream, &line, token, &peer);
+    let (command_line, session_id) = parse_protocol(
+        &mut reader,
+        &mut stream,
+        &line,
+        token,
+        &peer,
+        trusted_local,
+    );
     let command_line = match command_line {
         Some(c) => c,
         None => return, // connection rejected or errored
@@ -198,12 +248,30 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
 
     // Special: DEEPSEEK — gateway proxied API call (has key access)
     if command_line == "DEEPSEEK" {
+        if !trusted_local {
+            let _ = writeln!(stream, "GATEWAY: DEEPSEEK is local-only");
+            log::log("boos-gateway", "special_protocol_denied", &[
+                ("peer", &peer),
+                ("protocol", "DEEPSEEK"),
+            ]);
+            return;
+        }
         handle_deepseek(&mut stream, &mut reader);
         return;
     }
 
-    // Special: FETCH — read-only network access (agent cannot write/exfiltrate)
+    // Special: FETCH — administrator-allowlisted external context retrieval.
+    // GET is not intrinsically read-only or non-exfiltrating, so remote peers
+    // cannot use this protocol and the destination policy defaults to deny.
     if command_line == "FETCH" {
+        if !trusted_local {
+            let _ = writeln!(stream, "GATEWAY: FETCH is local-only");
+            log::log("boos-gateway", "special_protocol_denied", &[
+                ("peer", &peer),
+                ("protocol", "FETCH"),
+            ]);
+            return;
+        }
         handle_fetch(&mut stream, &mut reader);
         return;
     }
@@ -238,10 +306,11 @@ fn parse_protocol(
     first_line: &str,
     token: &Option<String>,
     peer: &str,
+    trusted_local: bool,
 ) -> (Option<String>, Option<String>) {
     let mut line = first_line.to_string();
     let mut session_id: Option<String> = None;
-    let mut auth_done = token.is_none(); // skip auth if no token configured
+    let mut auth_done = token.is_none() || trusted_local;
 
     // Phase 1: handle AUTH and SESSION preamble lines
     loop {
@@ -253,12 +322,10 @@ fn parse_protocol(
                     return (None, None);
                 }
                 auth_done = true;
-                // Read next line
-                line.clear();
-                if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
-                    return (None, None);
-                }
-                line = line.trim().to_string();
+                line = match read_protocol_line(reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+                    Ok(Some(line)) if !line.trim().is_empty() => line.trim().to_string(),
+                    _ => return (None, None),
+                };
                 continue;
             } else {
                 let _ = writeln!(stream, "AUTH REQUIRED");
@@ -268,13 +335,16 @@ fn parse_protocol(
         }
 
         if let Some(rest) = line.strip_prefix("SESSION ") {
-            session_id = Some(rest.trim().to_string());
-            // Read next line
-            line.clear();
-            if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+            let candidate = rest.trim();
+            if validate_session_id(candidate).is_err() {
+                let _ = writeln!(stream, "GATEWAY: invalid SESSION ID");
                 return (None, None);
             }
-            line = line.trim().to_string();
+            session_id = Some(candidate.to_string());
+            line = match read_protocol_line(reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+                Ok(Some(line)) if !line.trim().is_empty() => line.trim().to_string(),
+                _ => return (None, None),
+            };
             continue;
         }
 

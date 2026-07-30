@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 
 use crate::config;
 
-const MAX_NAMESPACE_ID_BYTES: usize = 64;
-
 #[derive(Debug, Clone)]
 pub struct MemoryNamespace {
     root: PathBuf,
@@ -56,14 +54,7 @@ impl MemoryNamespace {
 }
 
 fn validate_namespace_id(id: &str) -> io::Result<()> {
-    let is_valid = !id.is_empty()
-        && id.len() <= MAX_NAMESPACE_ID_BYTES
-        && id != "."
-        && id != ".."
-        && id.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
-        });
-    if is_valid {
+    if config::is_valid_runtime_id(id) {
         Ok(())
     } else {
         Err(invalid_namespace_id())
