@@ -1,8 +1,8 @@
 # Test 0: Interface and Wiring Probe — Pair 001
 
-This is the first exploratory paired run of the frozen v1 protocol. Both
-variants completed all five tasks, but the hypothesis was only partially
-supported.
+This is the first paired run of the frozen v1 protocol. Both variants completed
+all five tasks. It is retained as a Test 0 wiring/regression record, not
+evidence that the object interface improves AI operation.
 
 ## Raw results
 
@@ -31,13 +31,12 @@ Token usage is ancillary because it is not a v1 protocol metric:
 
 ## Interpretation
 
-The semantic view made discovery more coherent: the model needed fewer
-round-trips, made no unsupported capability claim, and did not learn parameter
-syntax by intentionally issuing an invalid command. This shows that the tested
-model could consume the implemented object protocol under an
-interface-specific prompt. Because the tasks were constructed from that
-interface, the result supplies wiring evidence but no general evidence that a
-semantic ABI improves AI operation.
+The object run recorded 7 environment interactions versus 12 for the baseline,
+zero scored incorrect capability assumptions versus one, and zero invalid
+command attempts versus one. The tested model consumed the implemented object
+protocol under an interface-specific prompt. Because the tasks were constructed
+from that interface, the result supplies wiring evidence but
+no general evidence that a semantic ABI improves AI operation.
 
 The current enumeration shape is not compact. A single unfiltered `world list`
 returned every field for 39 capabilities plus the system object, so the object
@@ -45,7 +44,8 @@ variant consumed about 2.6 times as many observation bytes. The next experiment
 should test filtered, projected and paginated discovery, such as listing only
 `id` and `state` before showing selected objects.
 
-This pair is exploratory evidence, not an aggregate conclusion.
+This pair is retained as a Test 0 wiring/regression record, not evidence that
+the interface improves AI operation.
 
 ## Validity limits
 
