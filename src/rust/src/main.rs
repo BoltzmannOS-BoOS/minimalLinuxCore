@@ -5,6 +5,7 @@ mod config;
 mod checkpoint;
 mod log;
 mod registry;
+mod world;
 mod submit;
 mod exec;
 mod exec_file;
