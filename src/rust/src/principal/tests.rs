@@ -42,6 +42,7 @@ fn definition(id: &str, uid: u32) -> PrincipalDefinition {
         id: PrincipalId::parse(id).unwrap(),
         user: format!("{}-user", id),
         uid,
+        gid: uid,
         enabled: true,
     }
 }
@@ -86,6 +87,7 @@ fn derives_paths_below_the_validated_principal_root() {
 
     assert_eq!(context.id().as_str(), "resident");
     assert_eq!(context.uid(), 101);
+    assert_eq!(context.gid(), 101);
     assert_eq!(context.user(), "resident-user");
     assert_eq!(context.runtime_root(), Path::new("/runtime/resident"));
     assert_eq!(context.memory_root(), Path::new("/runtime/resident/memory"));
@@ -108,11 +110,11 @@ fn duplicate_principal_ids_are_rejected() {
     let directory = FixtureDirectory::new(&[
         (
             "a.principal",
-            "id=resident\nuser=resident-a\nuid=101\nenabled=1\n",
+            "id=resident\nuser=resident-a\nuid=101\ngid=101\nenabled=1\n",
         ),
         (
             "b.principal",
-            "id=resident\nuser=resident-b\nuid=102\nenabled=1\n",
+            "id=resident\nuser=resident-b\nuid=102\ngid=102\nenabled=1\n",
         ),
     ]);
 
@@ -129,13 +131,28 @@ fn definition_requires_complete_typed_fields() {
     let directory = FixtureDirectory::new(&[
         (
             "missing-uid.principal",
-            "id=resident\nuser=boos-agent\nenabled=1\n",
+            "id=resident\nuser=boos-agent\ngid=101\nenabled=1\n",
         ),
         (
             "invalid-enabled.principal",
-            "id=debug\nuser=boos-gateway\nuid=100\nenabled=yes\n",
+            "id=debug\nuser=boos-gateway\nuid=100\ngid=100\nenabled=yes\n",
         ),
     ]);
+
+    assert_eq!(
+        load_definitions_from(directory.path())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+}
+
+#[test]
+fn definition_requires_a_group_for_privilege_drop() {
+    let directory = FixtureDirectory::new(&[(
+        "missing-gid.principal",
+        "id=resident\nuser=boos-agent\nuid=101\nenabled=1\n",
+    )]);
 
     assert_eq!(
         load_definitions_from(directory.path())
@@ -150,11 +167,11 @@ fn definitions_are_loaded_in_stable_id_order() {
     let directory = FixtureDirectory::new(&[
         (
             "z.principal",
-            "id=resident\nuser=boos-agent\nuid=101\nenabled=1\n",
+            "id=resident\nuser=boos-agent\nuid=101\ngid=101\nenabled=1\n",
         ),
         (
             "a.principal",
-            "id=debug\nuser=boos-gateway\nuid=100\nenabled=1\n",
+            "id=debug\nuser=boos-gateway\nuid=100\ngid=100\nenabled=1\n",
         ),
     ]);
 
@@ -173,4 +190,3 @@ fn effective_uid_parser_uses_the_effective_column() {
 
     assert_eq!(parse_effective_uid(status).unwrap(), 202);
 }
-

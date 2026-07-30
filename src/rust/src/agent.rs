@@ -445,7 +445,11 @@ pub fn main() {
             }
             i += 1;
         }
-        crate::agent_develop::run_develop(&goal, max_loops);
+        let context = crate::principal::current_context().unwrap_or_else(|error| {
+            eprintln!("Cannot resolve BoOS principal: {}", error);
+            std::process::exit(config::EXIT_ERROR);
+        });
+        crate::agent_develop::run_develop(&context, &goal, max_loops);
         return;
     }
 

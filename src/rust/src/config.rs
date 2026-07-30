@@ -2,9 +2,6 @@ pub const LOG_FILE: &str = "/var/log/boos.log";
 pub const CAP_FILE: &str = "/etc/boos/capabilities.conf";
 pub const CMD_DIR: &str = "/etc/boos/commands";
 pub const DEBUG_CONF: &str = "/etc/boos/debug.conf";
-pub const REQ_DIR: &str = "/var/boos/requests";
-pub const RESULT_DIR: &str = "/var/boos/results";
-pub const LAST_CMD_FILE: &str = "/var/boos/last-cmd";
 pub const UPTIME_FILE: &str = "/proc/uptime";
 
 pub const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1MB

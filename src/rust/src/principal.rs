@@ -34,6 +34,7 @@ pub struct PrincipalDefinition {
     pub id: PrincipalId,
     pub user: String,
     pub uid: u32,
+    pub gid: u32,
     pub enabled: bool,
 }
 
@@ -50,6 +51,10 @@ impl PrincipalContext {
 
     pub fn uid(&self) -> u32 {
         self.definition.uid
+    }
+
+    pub fn gid(&self) -> u32 {
+        self.definition.gid
     }
 
     pub fn user(&self) -> &str {
@@ -102,6 +107,16 @@ pub fn resolve_context(
         definition: definition.clone(),
         runtime_root: runtime_directory.join(id.as_str()),
     })
+}
+
+pub(crate) fn configured_context(
+    definition: &PrincipalDefinition,
+    runtime_directory: &Path,
+) -> PrincipalContext {
+    PrincipalContext {
+        definition: definition.clone(),
+        runtime_root: runtime_directory.join(definition.id.as_str()),
+    }
 }
 
 fn invalid_data(message: &str) -> io::Error {

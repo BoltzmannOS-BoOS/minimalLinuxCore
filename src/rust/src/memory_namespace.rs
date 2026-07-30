@@ -82,6 +82,7 @@ mod tests {
             id: PrincipalId::parse(id).unwrap(),
             user: format!("{id}-user"),
             uid,
+            gid: uid,
             enabled: true,
         };
         resolve_context(&[definition], id, uid, Path::new("/runtime")).unwrap()

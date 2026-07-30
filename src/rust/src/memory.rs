@@ -5,7 +5,8 @@
 //!   Recent   — ring buffer of last N observations/actions/results
 //!   Archive  — persistent key-value store with metadata
 //!
-//! All state lives under /var/boos/memory/. No external dependencies.
+//! Each authenticated principal owns a memory root below its runtime directory.
+//! No external dependencies.
 //! Uses key=value format throughout (no serde) — matching the repo convention.
 
 use std::collections::HashMap;
@@ -171,7 +172,7 @@ pub fn recent_entries() -> Vec<RecentEntry> {
     recent_entries_in(&namespace)
 }
 
-fn recent_entries_in(namespace: &MemoryNamespace) -> Vec<RecentEntry> {
+pub(crate) fn recent_entries_in(namespace: &MemoryNamespace) -> Vec<RecentEntry> {
     let dir = namespace.recent_dir();
     let _ = fs::create_dir_all(&dir);
 
@@ -199,7 +200,10 @@ pub fn recent_add(entry: RecentEntry) -> io::Result<()> {
     recent_add_in(&namespace, entry)
 }
 
-fn recent_add_in(namespace: &MemoryNamespace, entry: RecentEntry) -> io::Result<()> {
+pub(crate) fn recent_add_in(
+    namespace: &MemoryNamespace,
+    entry: RecentEntry,
+) -> io::Result<()> {
     let dir = namespace.recent_dir();
     fs::create_dir_all(&dir).map_err(|e| {
         log::log("boos-memory", "error", &[("op", "recent_create_dir"), ("error", &e.to_string())]);

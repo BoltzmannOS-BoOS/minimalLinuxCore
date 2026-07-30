@@ -61,7 +61,10 @@ fn definition_from_fields(
     fields: &HashMap<String, String>,
 ) -> io::Result<PrincipalDefinition> {
     for field in fields.keys() {
-        if !matches!(field.as_str(), "id" | "user" | "uid" | "enabled") {
+        if !matches!(
+            field.as_str(),
+            "id" | "user" | "uid" | "gid" | "enabled"
+        ) {
             return Err(invalid_data("principal definition has an unknown field"));
         }
     }
@@ -78,6 +81,9 @@ fn definition_from_fields(
     let uid = required_field(fields, "uid")?
         .parse::<u32>()
         .map_err(|_| invalid_data("principal UID is invalid"))?;
+    let gid = required_field(fields, "gid")?
+        .parse::<u32>()
+        .map_err(|_| invalid_data("principal GID is invalid"))?;
     let enabled = match required_field(fields, "enabled")? {
         "0" => false,
         "1" => true,
@@ -88,6 +94,7 @@ fn definition_from_fields(
         id,
         user: user.to_string(),
         uid,
+        gid,
         enabled,
     })
 }
@@ -102,4 +109,3 @@ fn required_field<'a>(
         .filter(|value| !value.is_empty())
         .ok_or_else(|| invalid_data("principal definition is missing a required field"))
 }
-

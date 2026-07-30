@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -7,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::bounded_process;
 use crate::config;
 use crate::log;
+use crate::principal::{self, PrincipalContext};
 use crate::queue_lock::QueueProcessorLock;
 use crate::queue_record;
 use crate::request_publish::encode_kv_value;
@@ -16,9 +18,17 @@ use crate::request_publish::encode_kv_value;
 ///
 /// Reads stdout and stderr concurrently via threads to avoid pipe-buffer deadlock:
 /// if the child fills stderr before stdout, sequential read would block forever.
-fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
+fn capture_output(
+    context: &PrincipalContext,
+    cmd: &str,
+    args: &[&str],
+) -> (String, i32, bool) {
     let mut command = process::Command::new(cmd);
-    command.args(args);
+    command
+        .args(args)
+        .env("BOOS_PRINCIPAL_ID", context.id().as_str())
+        .gid(context.gid())
+        .uid(context.uid());
     let captured = match bounded_process::run_with_limits(
         &mut command,
         config::MAX_OUTPUT_BYTES,
@@ -66,10 +76,45 @@ fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
     (output, exit_code, truncated)
 }
 
-/// Scan /var for files modified since the marker (verbose mode fs tracking).
-fn files_changed_since(marker_ts: f64) -> String {
+fn build_result_metadata(
+    owned_request: &queue_record::OwnedQueuedRequest,
+    verdict: &str,
+    exit_code: i32,
+    started_at: f64,
+    finished_at: f64,
+    duration_ms: u128,
+) -> String {
+    let request = &owned_request.request;
+    let trace_requester = request
+        .claimed_requester
+        .as_deref()
+        .unwrap_or("unknown");
+    let mut metadata = format!(
+        "id={}\nprincipal={}\nrequester={}\ncommand={}\nargs={}\nverdict={}\nexit_code={}\nstarted_at={:.3}\nfinished_at={:.3}\nduration_ms={}\n",
+        encode_kv_value(&request.id),
+        encode_kv_value(owned_request.principal.as_str()),
+        encode_kv_value(trace_requester),
+        encode_kv_value(&request.command),
+        encode_kv_value(&request.args),
+        verdict,
+        exit_code,
+        started_at,
+        finished_at,
+        duration_ms
+    );
+    if let Some(session_id) = &request.session_id {
+        metadata.push_str(&format!(
+            "session_id={}\n",
+            encode_kv_value(session_id)
+        ));
+    }
+    metadata
+}
+
+/// Scan one principal's runtime root for files modified since the marker.
+fn files_changed_since(root: &Path, marker_ts: f64) -> String {
     let mut touched = Vec::new();
-    let _ = walk_dir(Path::new("/var"), &mut touched, marker_ts, 0);
+    let _ = walk_dir(root, &mut touched, marker_ts, 0);
     touched.join(" ")
 }
 
@@ -109,42 +154,36 @@ fn walk_dir(dir: &Path, result: &mut Vec<String>, since: f64, depth: u32) -> io:
     Ok(())
 }
 
-pub fn main() {
-    for directory in [config::REQ_DIR, config::RESULT_DIR] {
-        if let Err(error) = fs::create_dir_all(directory) {
-            eprintln!("Cannot prepare queue directory {}: {}", directory, error);
-            return;
-        }
+pub fn process_principal_queue(context: &PrincipalContext) -> io::Result<u32> {
+    let request_directory = context.requests_dir();
+    let result_directory = context.results_dir();
+    for directory in [&request_directory, &result_directory] {
+        fs::create_dir_all(directory)?;
     }
 
-    let lock_path = Path::new(config::REQ_DIR).join(".processor.lock");
+    let lock_path = request_directory.join(".processor.lock");
     let _queue_lock = match QueueProcessorLock::acquire(&lock_path) {
         Ok(Some(lock)) => lock,
         Ok(None) => {
-            println!("Queue processor already active.");
-            return;
+            return Ok(0);
         }
         Err(error) => {
-            eprintln!("Cannot lock request queue: {}", error);
             log::log(
                 "boos-process",
                 "queue_lock_error",
-                &[("error", &error.to_string())],
+                &[
+                    ("principal", context.id().as_str()),
+                    ("error", &error.to_string()),
+                ],
             );
-            return;
+            return Err(error);
         }
     };
 
     let trace = log::get_trace_level();
     let mut processed = 0u32;
 
-    let dir = match fs::read_dir(config::REQ_DIR) {
-        Ok(d) => d,
-        Err(_) => {
-            println!("No pending requests.");
-            return;
-        }
-    };
+    let dir = fs::read_dir(&request_directory)?;
 
     let mut entries: Vec<_> = dir
         .filter_map(|e| e.ok())
@@ -154,8 +193,8 @@ pub fn main() {
 
     for entry in entries {
         let path = entry.path();
-        let request = match queue_record::load_request(&path) {
-            Ok(request) => request,
+        let owned_request = match queue_record::load_request(&path) {
+            Ok(request) => request.with_principal(context.id().clone()),
             Err(error) => {
                 log::log(
                     "boos-process",
@@ -180,13 +219,16 @@ pub fn main() {
                 continue;
             }
         };
+        let request = &owned_request.request;
         let id = request.id.as_str();
         let cmd = request.command.as_str();
         let args = request.args.as_str();
-        let requester = request.requester.as_str();
-        let session_id = request.session_id.as_deref();
+        let requester = request
+            .claimed_requester
+            .as_deref()
+            .unwrap_or("unknown");
 
-        match queue_record::existing_result(Path::new(config::RESULT_DIR), id) {
+        match queue_record::existing_result(&result_directory, id) {
             Ok(true) => {
                 log::log(
                     "boos-process",
@@ -214,11 +256,12 @@ pub fn main() {
         }
 
         let started_at = log::uptime_secs();
-        let prev_cmd = fs::read_to_string(config::LAST_CMD_FILE).unwrap_or_default();
+        let last_command_path = context.runtime_root().join("last-command");
+        let prev_cmd = fs::read_to_string(&last_command_path).unwrap_or_default();
         let prev_cmd = prev_cmd.trim();
 
-        // Verbose: record a baseline timestamp so we can scan /var for files
-        // modified during execution. ext2 stores integer-second mtimes, so we
+        // Verbose: record a baseline timestamp so we can scan this principal's
+        // runtime root. ext2 stores integer-second mtimes, so we
         // subtract 1s to avoid missing files whose mtime rounds down to the
         // same second as `now`. Trade-off: at most ~1s of pre-execution
         // changes may show up as false positives — acceptable for trace data.
@@ -234,14 +277,16 @@ pub fn main() {
         // Log execution start
         if trace == log::TraceLevel::Verbose {
             log::append_log_line(&format!(
-                "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\",\"prev\":\"{}\"}}",
-                started_at, log::json_escape(&id), log::json_escape(requester),
+                "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"principal\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\",\"prev\":\"{}\"}}",
+                started_at, log::json_escape(&id),
+                log::json_escape(context.id().as_str()), log::json_escape(requester),
                 log::json_escape(&cmd), log::json_escape(args), log::json_escape(prev_cmd)
             ));
         } else {
             log::append_log_line(&format!(
-                "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\"}}",
-                started_at, log::json_escape(&id), log::json_escape(requester),
+                "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"principal\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\"}}",
+                started_at, log::json_escape(&id),
+                log::json_escape(context.id().as_str()), log::json_escape(requester),
                 log::json_escape(&cmd), log::json_escape(args)
             ));
         }
@@ -251,7 +296,8 @@ pub fn main() {
         // spacing if args were originally multi-word).
         let mut exec_vec = vec![cmd];
         exec_vec.extend(args.split_whitespace());
-        let (output, exit_code, _truncated) = capture_output("/bin/boos-exec", &exec_vec);
+        let (output, exit_code, _truncated) =
+            capture_output(context, "/bin/boos-exec", &exec_vec);
 
         let finished_at = log::uptime_secs();
         let duration = log::duration_ms(started_at, finished_at);
@@ -267,11 +313,12 @@ pub fn main() {
         };
 
         let files_touched = if trace == log::TraceLevel::Verbose && marker_ts > 0.0 {
-            let found = files_changed_since(marker_ts);
+            let found = files_changed_since(context.runtime_root(), marker_ts);
             if !found.is_empty() {
                 log::append_log_line(&format!(
-                    "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"fs_trace\",\"files\":\"{}\"}}",
-                    log::uptime_secs(), log::json_escape(&found)
+                    "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"fs_trace\",\"principal\":\"{}\",\"files\":\"{}\"}}",
+                    log::uptime_secs(), log::json_escape(context.id().as_str()),
+                    log::json_escape(&found)
                 ));
             }
             found
@@ -281,27 +328,16 @@ pub fn main() {
 
         // Update last-cmd
         let last = format!("{} {}", cmd, args);
-        let _ = fs::write(config::LAST_CMD_FILE, last.trim());
+        let _ = fs::write(&last_command_path, last.trim());
 
-        let mut result_content = format!(
-            "id={}\nrequester={}\ncommand={}\nargs={}\nverdict={}\nexit_code={}\nstarted_at={:.3}\nfinished_at={:.3}\nduration_ms={}\n",
-            encode_kv_value(id),
-            encode_kv_value(requester),
-            encode_kv_value(cmd),
-            encode_kv_value(args),
+        let mut result_content = build_result_metadata(
+            &owned_request,
             verdict,
             exit_code,
             started_at,
             finished_at,
-            duration
+            duration.into(),
         );
-
-        if let Some(sid) = session_id {
-            result_content.push_str(&format!(
-                "session_id={}\n",
-                encode_kv_value(sid)
-            ));
-        }
 
         if !prev_cmd.is_empty() {
             result_content.push_str(&format!(
@@ -321,7 +357,7 @@ pub fn main() {
         result_content.push('\n');
 
         if let Err(error) = queue_record::publish_result(
-            Path::new(config::RESULT_DIR),
+            &result_directory,
             id,
             result_content.as_bytes(),
         ) {
@@ -365,7 +401,127 @@ pub fn main() {
         processed += 1;
     }
 
+    Ok(processed)
+}
+
+pub fn main() {
+    let definitions = match principal::load_definitions() {
+        Ok(definitions) => definitions,
+        Err(error) => {
+            eprintln!("Cannot load BoOS principals: {}", error);
+            return;
+        }
+    };
+    let mut processed = 0u32;
+    for definition in definitions.iter().filter(|definition| definition.enabled) {
+        let context = principal::configured_context(
+            definition,
+            Path::new(config::PRINCIPAL_RUNTIME_DIR),
+        );
+        match process_principal_queue(&context) {
+            Ok(count) => processed += count,
+            Err(error) => {
+                eprintln!(
+                    "Cannot process principal {}: {}",
+                    context.id().as_str(),
+                    error
+                );
+                log::log(
+                    "boos-process",
+                    "principal_queue_error",
+                    &[
+                        ("principal", context.id().as_str()),
+                        ("error", &error.to_string()),
+                    ],
+                );
+            }
+        }
+    }
     if processed == 0 {
         println!("No pending requests.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::principal::{
+        resolve_context, PrincipalDefinition, PrincipalId,
+    };
+    use crate::queue_record::{OwnedQueuedRequest, QueuedRequest};
+    use std::path::Path;
+
+    fn principal_context(runtime_root: &Path) -> crate::principal::PrincipalContext {
+        let definition = PrincipalDefinition {
+            id: PrincipalId::parse("resident").unwrap(),
+            user: "boos-agent".to_string(),
+            uid: 101,
+            gid: 101,
+            enabled: true,
+        };
+        resolve_context(&[definition], "resident", 101, runtime_root).unwrap()
+    }
+
+    #[test]
+    fn empty_principal_queue_prepares_only_its_own_spool() {
+        let runtime_root = std::env::temp_dir().join(format!(
+            "boos-process-principal-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&runtime_root);
+        let context = principal_context(&runtime_root);
+
+        let processed = process_principal_queue(&context).unwrap();
+
+        assert_eq!(processed, 0);
+        assert!(context.requests_dir().is_dir());
+        assert!(context.results_dir().is_dir());
+        assert!(!runtime_root.join("requests").exists());
+        std::fs::remove_dir_all(runtime_root).unwrap();
+    }
+
+    #[test]
+    fn principal_child_drops_root_supplementary_groups() {
+        let current_uid = std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .unwrap();
+        if String::from_utf8_lossy(&current_uid.stdout).trim() != "0" {
+            return;
+        }
+
+        let context = principal_context(Path::new("/runtime"));
+        let (uid, uid_exit, _) = capture_output(&context, "/usr/bin/id", &["-u"]);
+        let (gid, gid_exit, _) = capture_output(&context, "/usr/bin/id", &["-g"]);
+        let (groups, groups_exit, _) = capture_output(&context, "/usr/bin/id", &["-G"]);
+
+        assert_eq!((uid_exit, gid_exit, groups_exit), (0, 0, 0));
+        assert_eq!(uid.trim(), "101");
+        assert_eq!(gid.trim(), "101");
+        assert!(
+            !groups.split_whitespace().any(|group| group == "0"),
+            "root supplementary group leaked into principal child: {groups:?}"
+        );
+    }
+
+    #[test]
+    fn result_metadata_uses_spool_principal_as_owner() {
+        let owned = OwnedQueuedRequest {
+            principal: PrincipalId::parse("resident").unwrap(),
+            request: QueuedRequest {
+                id: "req-owned".to_string(),
+                claimed_requester: Some("forged".to_string()),
+                command: "help".to_string(),
+                args: String::new(),
+                session_id: Some("session-a".to_string()),
+            },
+        };
+
+        let metadata =
+            build_result_metadata(&owned, "allowed", 0, 1.0, 2.0, 1000);
+
+        assert!(metadata.contains("principal=resident\n"));
+        assert!(metadata.contains("requester=forged\n"));
+        assert!(!metadata.contains("principal=forged"));
     }
 }

@@ -1,11 +1,12 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use crate::config::{self, EXIT_ALLOWED, EXIT_DENIED, EXIT_ERROR, EXIT_UNKNOWN};
 use crate::log::{self, TraceLevel};
+use crate::principal::{self, PrincipalContext};
 use crate::registry;
 
 fn show_help() {
@@ -171,8 +172,24 @@ fn show_caps() {
     }
 }
 
-fn show_result_by_id(id: &str) -> i32 {
-    let path = Path::new(config::RESULT_DIR).join(format!("{}.out", id));
+fn result_paths(context: &PrincipalContext) -> io::Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(context.results_dir())? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|extension| extension == "out") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn show_result_by_id(context: &PrincipalContext, id: &str) -> i32 {
+    if crate::request_publish::validate_request_id(id).is_err() {
+        eprintln!("Malformed result ID: {}", id);
+        return EXIT_ERROR;
+    }
+    let path = context.results_dir().join(format!("{}.out", id));
     match fs::read_to_string(&path) {
         Ok(content) => {
             print!("{}", content);
@@ -185,26 +202,21 @@ fn show_result_by_id(id: &str) -> i32 {
     }
 }
 
-fn show_results() {
+fn show_results(context: &PrincipalContext) {
     println!("Results:");
     let mut found = false;
 
-    let dir = match fs::read_dir(config::RESULT_DIR) {
-        Ok(d) => d,
+    let paths = match result_paths(context) {
+        Ok(paths) => paths,
         Err(_) => {
             println!("  No results.");
             return;
         }
     };
-
-    let mut entries: Vec<_> = dir.filter_map(|e| e.ok()).collect();
-    entries.sort_by_key(|e| e.file_name());
-
-    for entry in entries {
-        let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "out") {
+    for path in paths {
             let kv = registry::parse_kv_file(&path);
             let id = kv.get("id").map(|s| s.as_str()).unwrap_or("?");
+            let principal = kv.get("principal").map(|s| s.as_str()).unwrap_or("?");
             let cmd = kv.get("command").map(|s| s.as_str()).unwrap_or("?");
             let args = kv.get("args").map(|s| s.as_str()).unwrap_or("");
             let requester = kv.get("requester").map(|s| s.as_str()).unwrap_or("?");
@@ -217,9 +229,9 @@ fn show_results() {
             found = true;
             println!();
             if !args.is_empty() {
-                print!("-- [{}] {}/{} {} -> {} (exit={}, {}ms) --", id, requester, cmd, args, verdict, exit_code, duration);
+                print!("-- [{}] principal={} requester={} /{} {} -> {} (exit={}, {}ms) --", id, principal, requester, cmd, args, verdict, exit_code, duration);
             } else {
-                print!("-- [{}] {}/{} -> {} (exit={}, {}ms) --", id, requester, cmd, verdict, exit_code, duration);
+                print!("-- [{}] principal={} requester={} /{} -> {} (exit={}, {}ms) --", id, principal, requester, cmd, verdict, exit_code, duration);
             }
             println!();
             if let Some(p) = prev {
@@ -244,7 +256,6 @@ fn show_results() {
                     after_delim = true;
                 }
             }
-        }
     }
 
     if !found {
@@ -252,10 +263,10 @@ fn show_results() {
     }
 }
 
-/// Delete result files in /var/boos/results older than `days` days.
+/// Delete the current principal's result files older than `days` days.
 /// Default 7 days. Per the "observe, don't obstruct" philosophy this is
 /// manual — the AI or human triggers it; nothing runs automatically.
-fn prune_results(args: &str) -> i32 {
+fn prune_results(context: &PrincipalContext, args: &str) -> i32 {
     use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
     let days: u64 = args.split_whitespace().next()
@@ -272,8 +283,8 @@ fn prune_results(args: &str) -> i32 {
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let dir = match fs::read_dir(config::RESULT_DIR) {
-        Ok(d) => d,
+    let paths = match result_paths(context) {
+        Ok(paths) => paths,
         Err(_) => {
             println!("No results directory.");
             return EXIT_ALLOWED;
@@ -282,12 +293,8 @@ fn prune_results(args: &str) -> i32 {
 
     let mut removed = 0u32;
     let mut kept = 0u32;
-    for entry in dir.filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.extension().map_or(true, |e| e != "out") {
-            continue;
-        }
-        let too_old = entry.metadata()
+    for path in paths {
+        let too_old = path.metadata()
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -349,7 +356,7 @@ fn check_enabled(flag: &str, name: &str) -> bool {
 }
 
 /// Run a builtin command. Returns one of the EXIT_* constants from config.
-fn run_builtin(exec_target: &str, args: &str) -> i32 {
+fn run_builtin(context: &PrincipalContext, exec_target: &str, args: &str) -> i32 {
     match exec_target {
         "__builtin_help" => { show_help(); EXIT_ALLOWED }
         "__builtin_commands" => { list_commands(args); EXIT_ALLOWED }
@@ -387,14 +394,14 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
                 Err(_) => EXIT_ERROR,
             }
         }
-        "__builtin_results" => { show_results(); EXIT_ALLOWED }
+        "__builtin_results" => { show_results(context); EXIT_ALLOWED }
         "__builtin_result" => {
             if args.is_empty() {
                 eprintln!("Usage: result <id>");
                 EXIT_ERROR
             } else {
                 let id = args.split_whitespace().next().unwrap_or("");
-                show_result_by_id(id)
+                show_result_by_id(context, id)
             }
         }
         "__builtin_shell" => {
@@ -422,14 +429,14 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
             let _ = process::Command::new("/bin/poweroff").arg("-f").status();
             EXIT_ALLOWED
         }
-        "__builtin_prune" => prune_results(args),
+        "__builtin_prune" => prune_results(context, args),
         "__builtin_rotate_logs" => rotate_logs_cmd(),
         // ── File operations → exec_file.rs ──
         _ => match crate::exec_file::run_file_builtin(exec_target, args) {
             Some(code) => code,
             None => match exec_target {
-        "__builtin_audit" => audit_cmd(args),
-        "__builtin_reset" => reset_cmd(),
+        "__builtin_audit" => audit_cmd(context, args),
+        "__builtin_reset" => reset_cmd(context),
         // ── Agent memory builtins ─────────────────────────────────────────
         "__builtin_session_start" => crate::agent::cmd_session_start(args),
         "__builtin_session_status" => crate::agent::cmd_session_status(),
@@ -578,7 +585,7 @@ fn proc_list_cmd() -> i32 {
 }
 // ── Audit functions ────────────────────────────────────────────────────────
 
-fn audit_cmd(args: &str) -> i32 {
+fn audit_cmd(context: &PrincipalContext, args: &str) -> i32 {
     let args = args.trim();
     if args.is_empty() {
         eprintln!("Usage: audit <recent|failures|session|summary> [args...]");
@@ -589,11 +596,11 @@ fn audit_cmd(args: &str) -> i32 {
         None => (args, ""),
     };
     match subcmd {
-        "recent" => audit_recent(rest),
-        "failures" => audit_failures(),
-        "session" => audit_session(rest),
-        "summary" => audit_summary(),
-        "timeline" => audit_timeline(rest),
+        "recent" => audit_recent(context, rest),
+        "failures" => audit_failures(context),
+        "session" => audit_session(context, rest),
+        "summary" => audit_summary(context),
+        "timeline" => audit_timeline(context, rest),
         _ => {
             eprintln!("Unknown audit subcommand: {}", subcmd);
             eprintln!("Usage: audit <recent|failures|session|summary|timeline>");
@@ -602,19 +609,16 @@ fn audit_cmd(args: &str) -> i32 {
     }
 }
 
-fn audit_recent(args: &str) -> i32 {
+fn audit_recent(context: &PrincipalContext, args: &str) -> i32 {
     let n: usize = args.split_whitespace().next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
 
     let mut entries: Vec<(String, std::fs::Metadata)> = Vec::new();
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            let path = e.path();
-            if path.extension().map_or(false, |ext| ext == "out") {
-                if let Ok(meta) = path.metadata() {
-                    entries.push((path.to_string_lossy().to_string(), meta));
-                }
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
+            if let Ok(meta) = path.metadata() {
+                entries.push((path.to_string_lossy().to_string(), meta));
             }
         }
     }
@@ -641,13 +645,11 @@ fn audit_recent(args: &str) -> i32 {
     EXIT_ALLOWED
 }
 
-fn audit_failures() -> i32 {
+fn audit_failures(context: &PrincipalContext) -> i32 {
     println!("Denied and errored actions:");
     let mut found = false;
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            let path = e.path();
-            if path.extension().map_or(false, |ext| ext == "out") {
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
                 let kv = registry::parse_kv_file(&path);
                 let verdict = kv.get("verdict").map(|s| s.as_str()).unwrap_or("");
                 if verdict == "denied" || verdict == "error" || verdict == "unknown" {
@@ -657,7 +659,6 @@ fn audit_failures() -> i32 {
                     println!("  {} {} -> {} (exit={})", id, cmd, verdict, exit_code);
                     found = true;
                 }
-            }
         }
     }
     if !found {
@@ -666,17 +667,15 @@ fn audit_failures() -> i32 {
     EXIT_ALLOWED
 }
 
-fn audit_session(session_id: &str) -> i32 {
+fn audit_session(context: &PrincipalContext, session_id: &str) -> i32 {
     if session_id.is_empty() {
         eprintln!("Usage: audit session <session-id>");
         return EXIT_ERROR;
     }
     println!("Session: {}", session_id);
     let mut found = false;
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            let path = e.path();
-            if path.extension().map_or(false, |ext| ext == "out") {
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
                 let kv = registry::parse_kv_file(&path);
                 let sid = kv.get("session_id").map(|s| s.as_str()).unwrap_or("");
                 if sid == session_id {
@@ -687,7 +686,6 @@ fn audit_session(session_id: &str) -> i32 {
                     println!("  {} {} -> {} (exit={})", id, cmd, verdict, exit_code);
                     found = true;
                 }
-            }
         }
     }
     if !found {
@@ -696,17 +694,15 @@ fn audit_session(session_id: &str) -> i32 {
     EXIT_ALLOWED
 }
 
-fn audit_summary() -> i32 {
+fn audit_summary(context: &PrincipalContext) -> i32 {
     let mut total = 0u32;
     let mut allowed = 0u32;
     let mut denied = 0u32;
     let mut error = 0u32;
     let mut unknown = 0u32;
 
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            let path = e.path();
-            if path.extension().map_or(false, |ext| ext == "out") {
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
                 let kv = registry::parse_kv_file(&path);
                 total += 1;
                 match kv.get("verdict").map(|s| s.as_str()).unwrap_or("") {
@@ -716,7 +712,6 @@ fn audit_summary() -> i32 {
                     "unknown" => unknown += 1,
                     _ => {}
                 }
-            }
         }
     }
 
@@ -735,20 +730,17 @@ fn audit_summary() -> i32 {
     EXIT_ALLOWED
 }
 
-fn audit_timeline(args: &str) -> i32 {
+fn audit_timeline(context: &PrincipalContext, args: &str) -> i32 {
     let n: usize = args.split_whitespace().next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(20);
 
     // Collect result files sorted by modification time (oldest first)
     let mut entries: Vec<(String, std::fs::Metadata)> = Vec::new();
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            let path = e.path();
-            if path.extension().map_or(false, |ext| ext == "out") {
-                if let Ok(meta) = path.metadata() {
-                    entries.push((path.to_string_lossy().to_string(), meta));
-                }
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
+            if let Ok(meta) = path.metadata() {
+                entries.push((path.to_string_lossy().to_string(), meta));
             }
         }
     }
@@ -764,11 +756,14 @@ fn audit_timeline(args: &str) -> i32 {
         let exit_code = kv.get("exit_code").map(|s| s.as_str()).unwrap_or("?");
         let duration = kv.get("duration_ms").map(|s| s.as_str()).unwrap_or("?");
         let session = kv.get("session_id").map(|s| s.as_str()).unwrap_or("");
+        let principal = kv.get("principal").map(|s| s.as_str()).unwrap_or("?");
         let requester = kv.get("requester").map(|s| s.as_str()).unwrap_or("?");
         let started = kv.get("started_at").map(|s| s.as_str()).unwrap_or("?");
 
-        print!("t={} [{}] {} {}/{}",
-            started, id, requester, cmd, verdict);
+        print!(
+            "t={} [{}] principal={} requester={} {}/{}",
+            started, id, principal, requester, cmd, verdict
+        );
         if !args.is_empty() { print!(" {}", args); }
         print!(" -> {} ({}ms exit={})", verdict, duration, exit_code);
         if !session.is_empty() { print!(" session={}", session); }
@@ -779,17 +774,15 @@ fn audit_timeline(args: &str) -> i32 {
 
 /// Clear all persistent state: results, requests, logs, memory.
 /// This is a human-only operation — allow_reset is 0 by default.
-fn reset_cmd() -> i32 {
+fn reset_cmd(context: &PrincipalContext) -> i32 {
     println!("Resetting BoOS persistent state...");
 
     // 1. Clear results
     let mut cleared_results = 0u32;
-    if let Ok(dir) = std::fs::read_dir(config::RESULT_DIR) {
-        for e in dir.filter_map(|e| e.ok()) {
-            if e.path().extension().map_or(false, |ext| ext == "out") {
-                if std::fs::remove_file(e.path()).is_ok() {
-                    cleared_results += 1;
-                }
+    if let Ok(paths) = result_paths(context) {
+        for path in paths {
+            if std::fs::remove_file(path).is_ok() {
+                cleared_results += 1;
             }
         }
     }
@@ -797,7 +790,7 @@ fn reset_cmd() -> i32 {
 
     // 2. Clear requests
     let mut cleared_requests = 0u32;
-    if let Ok(dir) = std::fs::read_dir(config::REQ_DIR) {
+    if let Ok(dir) = std::fs::read_dir(context.requests_dir()) {
         for e in dir.filter_map(|e| e.ok()) {
             if std::fs::remove_file(e.path()).is_ok() {
                 cleared_requests += 1;
@@ -814,7 +807,7 @@ fn reset_cmd() -> i32 {
     println!("  Log reset");
 
     // 4. Clear memory
-    let memory_dir = "/var/boos/memory";
+    let memory_dir = context.memory_root();
     let mut cleared_memory = 0u32;
     if let Ok(entries) = std::fs::read_dir(memory_dir) {
         for e in entries.filter_map(|e| e.ok()) {
@@ -835,7 +828,7 @@ fn reset_cmd() -> i32 {
     println!("  Memory files cleared: {}", cleared_memory);
 
     // 5. Clear last-cmd
-    let _ = std::fs::remove_file(config::LAST_CMD_FILE);
+    let _ = std::fs::remove_file(context.runtime_root().join("last-command"));
 
     log::log("boos-exec", "reset", &[
         ("results", &cleared_results.to_string()),
@@ -852,6 +845,10 @@ pub fn main() {
         eprintln!("Usage: boos-exec <command> [args...]");
         process::exit(EXIT_ERROR);
     }
+    let context = principal::current_context().unwrap_or_else(|error| {
+        eprintln!("Cannot resolve BoOS principal: {}", error);
+        process::exit(EXIT_ERROR);
+    });
 
     let cmd_name = &args[1];
     let cmd_args: Vec<&str> = args[2..].iter().map(|s| s.as_str()).collect();
@@ -870,14 +867,21 @@ pub fn main() {
         process::exit(EXIT_DENIED);
     }
 
-    log::log_allowed(&cmd.name, &cmd.description);
+    let last_command_path = context.runtime_root().join("last-command");
+    let previous_command = fs::read_to_string(&last_command_path).unwrap_or_default();
+    log::log_allowed(
+        &cmd.name,
+        &cmd.description,
+        context.id().as_str(),
+        previous_command.trim(),
+    );
 
-    let _ = std::fs::create_dir_all(Path::new(config::LAST_CMD_FILE).parent().unwrap());
+    let _ = std::fs::create_dir_all(context.runtime_root());
     let last_cmd = format!("{} {}", cmd_name, cmd_args_str);
-    let _ = fs::write(config::LAST_CMD_FILE, last_cmd.trim());
+    let _ = fs::write(&last_command_path, last_cmd.trim());
 
     let exit_code = if cmd.exec.starts_with("__builtin_") {
-        run_builtin(&cmd.exec, &cmd_args_str)
+        run_builtin(&context, &cmd.exec, &cmd_args_str)
     } else {
         // External binary registered via `exec=/path/...`. Its exit code is
         // passed through verbatim; process.rs maps non-{0,1,3} → "error".
@@ -895,3 +899,6 @@ pub fn main() {
 
     process::exit(exit_code);
 }
+
+#[cfg(test)]
+mod tests;

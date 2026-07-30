@@ -1,12 +1,13 @@
 use std::env;
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config;
 use crate::log;
+use crate::principal::{self, PrincipalContext};
 use crate::request_publish::{publish_request, RequestRecord};
 
 // ... (random_suffix, generate_id unchanged)
@@ -38,8 +39,8 @@ fn generate_id() -> String {
     format!("req-{}-{:08x}", now, random_suffix())
 }
 
-fn wait_for_result(id: &str, timeout_secs: u64) {
-    let result_path = Path::new(config::RESULT_DIR).join(format!("{}.out", id));
+fn wait_for_result(results_dir: &Path, id: &str, timeout_secs: u64) {
+    let result_path = results_dir.join(format!("{}.out", id));
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
 
     loop {
@@ -65,6 +66,28 @@ fn wait_for_result(id: &str, timeout_secs: u64) {
 
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+fn publish_command(
+    context: &PrincipalContext,
+    id: &str,
+    trace_requester: &str,
+    command: &str,
+    args: &str,
+    session_id: Option<&str>,
+    submitted_at: f64,
+) -> std::io::Result<PathBuf> {
+    let request_directory = context.requests_dir();
+    fs::create_dir_all(&request_directory)?;
+    let record = RequestRecord {
+        id,
+        requester: trace_requester,
+        command,
+        args,
+        submitted_at,
+        session_id,
+    };
+    publish_request(&request_directory, &record)
 }
 
 pub fn main() {
@@ -103,25 +126,24 @@ pub fn main() {
     let requester = env::var("BOOS_REQUESTER").unwrap_or_else(|_| "unknown".to_string());
     let session_id = env::var("BOOS_SESSION").ok();
 
-    let request_dir = Path::new(config::REQ_DIR);
-    if let Err(error) = fs::create_dir_all(request_dir) {
-        eprintln!("Failed to prepare request queue: {}", error);
+    let context = principal::current_context().unwrap_or_else(|error| {
+        eprintln!("Cannot resolve BoOS principal: {}", error);
         process::exit(config::EXIT_ERROR);
-    }
+    });
 
     let submitted_at = log::uptime_secs();
     let id = (0..10)
         .find_map(|_| {
             let candidate = generate_id();
-            let record = RequestRecord {
-                id: &candidate,
-                requester: &requester,
-                command: cmd,
-                args: &cmd_args_str,
+            match publish_command(
+                &context,
+                &candidate,
+                &requester,
+                cmd,
+                &cmd_args_str,
+                session_id.as_deref(),
                 submitted_at,
-                session_id: session_id.as_deref(),
-            };
-            match publish_request(request_dir, &record) {
+            ) {
                 Ok(_) => Some(candidate),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
                 Err(error) => {
@@ -150,13 +172,57 @@ pub fn main() {
     println!("Submitted: {}", id);
 
     if wait_mode {
-        wait_for_result(&id, timeout);
+        wait_for_result(&context.results_dir(), &id, timeout);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::principal::{
+        resolve_context, PrincipalDefinition, PrincipalId,
+    };
+    use std::path::Path;
+
+    fn principal_context(runtime_root: &Path) -> crate::principal::PrincipalContext {
+        let definition = PrincipalDefinition {
+            id: PrincipalId::parse("resident").unwrap(),
+            user: "boos-agent".to_string(),
+            uid: 101,
+            gid: 101,
+            enabled: true,
+        };
+        resolve_context(&[definition], "resident", 101, runtime_root).unwrap()
+    }
+
+    #[test]
+    fn request_is_published_inside_the_authenticated_principal_spool() {
+        let runtime_root = std::env::temp_dir().join(format!(
+            "boos-submit-principal-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&runtime_root);
+        let context = principal_context(&runtime_root);
+        std::fs::create_dir_all(context.requests_dir()).unwrap();
+
+        let path = publish_command(
+            &context,
+            "req-fixed",
+            "diagnostic",
+            "help",
+            "",
+            None,
+            12.5,
+        )
+        .unwrap();
+
+        assert_eq!(
+            path,
+            runtime_root.join("resident/requests/req-fixed")
+        );
+        assert!(!runtime_root.join("requests/req-fixed").exists());
+        std::fs::remove_dir_all(runtime_root).unwrap();
+    }
 
     #[test]
     fn test_generate_id_format() {
