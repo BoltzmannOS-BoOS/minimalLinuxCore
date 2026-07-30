@@ -15,6 +15,7 @@ mod exec_file;
 mod bounded_process;
 mod process;
 mod queue_lock;
+mod queue_record;
 mod gateway_policy;
 mod gateway;
 mod supervisor;
