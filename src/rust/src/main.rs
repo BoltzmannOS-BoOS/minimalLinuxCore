@@ -8,6 +8,7 @@ mod registry;
 mod world;
 mod world_sources;
 mod world_command;
+mod request_publish;
 mod submit;
 mod exec;
 mod exec_file;
