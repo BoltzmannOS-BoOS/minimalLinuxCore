@@ -30,12 +30,17 @@ expect_exit() {
 expect_exit 1 "matching contamination retires the exact frontier tuple" \
     "$eligibility_checker" "$registration" family problem-family-example \
     "$matching_contamination"
+expect_exit 2 "invalid contamination after a matching record fails closed" \
+    "$eligibility_checker" "$registration" family problem-family-example \
+    "$matching_contamination" "$invalid_contamination"
 "$eligibility_checker" "$registration" family problem-family-example \
     "$unrelated_contamination" >/dev/null
 "$eligibility_checker" "$registration" family problem-family-example \
     "$unrelated_registration_contamination" >/dev/null
 "$eligibility_checker" "$registration" family problem-family-example \
     "$unrelated_level_contamination" >/dev/null
+expect_exit 2 "empty target ID is invalid input" \
+    "$eligibility_checker" "$registration" family "" "$unrelated_contamination"
 expect_exit 2 "invalid contamination fails closed" \
     "$eligibility_checker" "$registration" family problem-family-example \
     "$invalid_contamination"

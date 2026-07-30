@@ -25,6 +25,12 @@ target_level="$2"
 target_id="$3"
 shift 3
 
+if [ -z "$target_id" ]; then
+    echo "target ID must not be empty" >&2
+    usage
+    exit 2
+fi
+
 case "$target_level" in
     case|family|metric) ;;
     *)
@@ -53,6 +59,9 @@ for contamination_file in "$@"; do
         echo "contamination input must be a contamination record: $contamination_file" >&2
         exit 2
     fi
+done
+
+for contamination_file in "$@"; do
     if [ "$(record_value "$contamination_file" registration_id)" = "$registration_id" ] && \
         [ "$(record_value "$contamination_file" target_level)" = "$target_level" ] && \
         [ "$(record_value "$contamination_file" target_id)" = "$target_id" ]; then
