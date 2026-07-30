@@ -103,7 +103,9 @@ jobs:
         if: failure()
         with:
           name: boos-qemu-failure-${{ github.sha }}
-          path: build/ci-qemu.log
+          path: |
+            build/ci-offline-qemu.log
+            build/ci-qemu.log
           if-no-files-found: warn
 
       - uses: actions/upload-artifact@v4

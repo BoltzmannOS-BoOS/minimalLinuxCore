@@ -39,21 +39,22 @@ else
 fi
 
 echo "[init] network: configuring virtio interface"
-ifconfig eth0 up
-udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
-IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
-if [ -z "$IP" ]; then
-    echo "[init] DHCP failed; applying QEMU user-network fallback"
-    ifconfig eth0 10.0.2.15 netmask 255.255.255.0
-    /bin/busybox route add default gw 10.0.2.2
-    echo "nameserver 10.0.2.3" > /etc/resolv.conf
+IP=""
+if ifconfig eth0 up 2>/dev/null; then
+    udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
     IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+    if [ -z "$IP" ]; then
+        echo "[init] DHCP failed; applying QEMU user-network fallback"
+        ifconfig eth0 10.0.2.15 netmask 255.255.255.0
+        /bin/busybox route add default gw 10.0.2.2
+        echo "nameserver 10.0.2.3" > /etc/resolv.conf
+        IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+    fi
 fi
 if [ -n "$IP" ]; then
     echo "[init] network up: eth0=$IP"
 else
-    echo "[init] fatal: network configuration failed"
-    exit 1
+    echo "[init] network unavailable; continuing offline"
 fi
 
 echo "================================================"
