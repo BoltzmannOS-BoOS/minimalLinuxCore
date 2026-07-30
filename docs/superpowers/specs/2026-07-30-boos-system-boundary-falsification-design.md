@@ -12,11 +12,11 @@ AI-native operating system is necessary. The existing experiment becomes
 `world` representation and exposes the cost of an unfiltered object listing.
 It does not test an operating-system boundary.
 
-The next benchmark will try to falsify a narrower claim:
+The next benchmark will evaluate a narrower question:
 
-> System-owned skill state can provide selective propagation, isolation, and
-> recovery more reliably than ordinary Linux mechanisms or an unprivileged
-> Linux semantic service, without increasing human intervention.
+> For selective skill propagation, isolation, and recovery, which boundary—if
+> any—produces the safest and most reliable outcome with the least human
+> intervention?
 
 The benchmark compares three implementations of one frozen, externally scored
 scenario:
@@ -38,10 +38,9 @@ The following rules are part of the benchmark contract:
 
 1. Freeze the scenario, primary metrics, budgets, exclusion rules, evaluator,
    and analysis method before implementing a product response to the scenario.
-2. State the null hypothesis as the default conclusion:
-
-   > BoOS provides no material advantage over the strongest Linux user-space
-   > alternative.
+2. Preregister four symmetric result categories without designating a default:
+   BoOS advantage, Linux-service advantage, operational equivalence within
+   frozen margins, and insufficient evidence.
 
 3. Use an external deterministic oracle. Model prose, self-reported success,
    and implementation-specific logs cannot decide whether a task passed.
@@ -57,8 +56,9 @@ The following rules are part of the benchmark contract:
    come from the frozen protocol.
 9. Publish raw paired results before summaries. Do not replace a failed metric,
    change weights, or add a favorable task after seeing results.
-10. If the Linux service matches BoOS, report that the tested feature does not
-    justify an OS boundary.
+10. Report the category selected by the frozen analysis. Do not describe
+    absence of detected difference as equivalence unless the preregistered
+    equivalence test passes.
 
 The evaluator must also be tested against intentionally broken states. A
 benchmark that cannot reject a leaking, stale, partially committed, or
@@ -180,8 +180,8 @@ control. It may provide:
 - service-managed access checks.
 
 It runs without privileged enforcement beyond the ordinary Unix account that
-owns it. The benchmark must not withhold an obvious user-space technique merely
-to make BoOS win.
+owns it. The benchmark must not withhold an obvious user-space technique or
+grant an extra mechanism merely to favor one variant.
 
 ### 5.3 Variant C — BoOS Boundary
 
@@ -271,22 +271,26 @@ After primary outcomes are frozen, the harness records:
 
 These explain cost and friction but cannot reverse a primary failure.
 
-### 7.3 Evidence for an OS boundary
+### 7.3 Symmetric interpretation
 
-The benchmark provides positive evidence for this one OS boundary only if:
+The registered analysis assigns one of four results:
 
-1. BoOS is no worse on isolation safety;
-2. BoOS has higher paired end-to-end success or lower paired human
-   intervention than Variant B across registered cases;
-3. the result appears across model families rather than one model-specific
-   interface preference;
-4. traces identify a trusted enforcement, lifecycle, or recovery mechanism
-   that explains the difference;
-5. adding that mechanism to Variant B would move authority into a boundary
-   equivalent to the one being claimed by BoOS.
+1. **BoOS advantage** — BoOS is no worse on isolation safety and exceeds the
+   frozen superiority margin for end-to-end success or human intervention.
+   Traces must identify an enforcement, lifecycle, or recovery mechanism that
+   explains the difference.
+2. **Linux-service advantage** — Variant B is no worse on isolation safety and
+   exceeds the same frozen superiority margin in the other direction.
+3. **Operational equivalence** — both directions pass the preregistered
+   equivalence tests for every primary outcome. For this scenario and tested
+   conditions, the evidence says the OS boundary is unnecessary.
+4. **Insufficient evidence** — none of the preceding conditions is met. This
+   includes noisy estimates, mixed safety/correctness outcomes, and an
+   underpowered run.
 
-If Variant B matches BoOS, the benchmark conclusion is that a Linux user-space
-service is sufficient for this scenario.
+No category is a default or expected result. Cross-model consistency and
+mechanism traces accompany whichever directional result occurs. Failure to
+detect a difference is not silently promoted to equivalence.
 
 ## 8. Experimental Phases
 
@@ -452,14 +456,15 @@ This first system-boundary benchmark does not:
 
 The design is ready for implementation planning when:
 
-1. the null hypothesis and strongest baseline are explicit;
+1. the symmetric result categories and strongest baseline are explicit;
 2. scenario success is implementation-independent and externally observable;
 3. oracle qualification precedes product implementation;
 4. hidden generation, blinding, frozen budgets, and raw evidence prevent
    post-result metric changes;
 5. safety cannot be averaged away;
 6. the decisive comparison is Linux semantic service versus BoOS;
-7. a tie explicitly means the tested feature does not justify an OS boundary;
+7. equivalence requires frozen margins, while an unresolved comparison remains
+   insufficient evidence;
 8. Test 0 remains preserved but is no longer presented as architectural
    evidence;
 9. the first implementation slice is limited to contracts, generator, oracle,
