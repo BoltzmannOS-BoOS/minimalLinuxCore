@@ -98,6 +98,23 @@ EOF
 expect_failure "positive integer is zero" \
     require_positive_integer "$temporary_dir/zero.kv" count
 
+cat >"$temporary_dir/large-positive.kv" <<'EOF'
+schema=boos.evidence.test.v1
+count=9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+EOF
+if ! require_positive_integer "$temporary_dir/large-positive.kv" count \
+    2>"$temporary_dir/large-positive.stderr"
+then
+    echo "expected arbitrarily large digit string to be a positive integer" >&2
+    cat "$temporary_dir/large-positive.stderr" >&2
+    exit 1
+fi
+if [ -s "$temporary_dir/large-positive.stderr" ]; then
+    echo "positive integer validation emitted an overflow diagnostic" >&2
+    cat "$temporary_dir/large-positive.stderr" >&2
+    exit 1
+fi
+
 cat >"$temporary_dir/no-path.kv" <<'EOF'
 schema=boos.evidence.test.v1
 path=none

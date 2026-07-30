@@ -22,6 +22,7 @@ unknown_key="$evidence_dir/fixtures/invalid/incident-unknown-key.kv"
 malformed_line="$evidence_dir/fixtures/invalid/incident-malformed-line.kv"
 
 "$validator" "$valid_fixture" >/dev/null
+"$validator" "$evidence_dir/fixtures/invalid/incident-private.kv" >/dev/null
 expect_failure "missing incident consequence" \
     "$validator" "$missing_consequence"
 expect_failure "feature specification is not incident provenance" \

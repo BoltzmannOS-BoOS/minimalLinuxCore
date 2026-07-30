@@ -14,6 +14,9 @@ only metadata needed to govern their use.
 - **Append-only reveal rules** require exposure and contamination records to be
   added without rewriting earlier records.
 
-Eligibility is derived from the supplied append-only contamination records for
-the exact registered target. The guard cannot detect exposure that was not
-disclosed in those records.
+The compatibility-named eligibility guard checks only for an exact match among
+the supplied append-only contamination records. A match retires that registered
+tuple. No match does not establish that the requested target belongs to the
+registration or remains frontier-eligible: registration manifests contain no
+case, family, or metric roster, and the guard cannot detect exposure absent
+from the supplied records.

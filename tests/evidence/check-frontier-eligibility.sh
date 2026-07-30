@@ -9,9 +9,10 @@ usage() {
     cat >&2 <<'EOF'
 usage: check-frontier-eligibility.sh <registration.kv> <target_level> <target_id> [contamination.kv ...]
 
-Exits 0 when the exact registration/target tuple remains frontier-eligible, 1
-when a matching valid contamination record retires it, or 2 for invalid input
-or an invalid contamination record (fail closed).
+Exits 0 only when no supplied valid contamination record matches the exact
+registration/target tuple, 1 when an exact supplied record matches and retires
+that tuple, or 2 for invalid input or an invalid contamination record (fail
+closed). Exit 0 does not establish target membership or frontier eligibility.
 EOF
 }
 
@@ -65,7 +66,9 @@ for contamination_file in "$@"; do
     if [ "$(record_value "$contamination_file" registration_id)" = "$registration_id" ] && \
         [ "$(record_value "$contamination_file" target_level)" = "$target_level" ] && \
         [ "$(record_value "$contamination_file" target_id)" = "$target_id" ]; then
-        echo "frontier ineligible: matching contamination record retires $registration_id:$target_level:$target_id" >&2
+        echo "matching supplied contamination record retires $registration_id:$target_level:$target_id" >&2
         exit 1
     fi
 done
+
+echo "no matching supplied contamination record: $registration_id:$target_level:$target_id; target membership and frontier status are not established"

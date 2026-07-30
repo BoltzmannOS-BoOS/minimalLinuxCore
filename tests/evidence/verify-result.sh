@@ -10,6 +10,15 @@ result_file="${2:?usage: verify-result.sh <registration.kv> <result.kv>}"
 "$evidence_dir/validate-record.sh" "$registration_file" >/dev/null
 "$evidence_dir/validate-record.sh" "$result_file" >/dev/null
 
+if [ "$(record_value "$registration_file" schema)" != "boos.evidence.registration.v1" ]; then
+    echo "registration input must use schema boos.evidence.registration.v1" >&2
+    exit 1
+fi
+if [ "$(record_value "$result_file" schema)" != "boos.evidence.result.v1" ]; then
+    echo "result input must use schema boos.evidence.result.v1" >&2
+    exit 1
+fi
+
 for field in registration_id case_bundle_sha256 evaluator_version; do
     registration_value="$(record_value "$registration_file" "$field")"
     result_value="$(record_value "$result_file" "$field")"
@@ -70,4 +79,19 @@ if [ "$actual_outcomes_sha256" != "$expected_outcomes_sha256" ]; then
     exit 1
 fi
 
-echo "verified evidence result"
+"$evidence_dir/validate-record.sh" "$outcomes_file" >/dev/null
+if [ "$(record_value "$outcomes_file" schema)" != "boos.evidence.primary-outcomes.v1" ]; then
+    echo "primary outcomes artifact must use schema boos.evidence.primary-outcomes.v1" >&2
+    exit 1
+fi
+
+for field in result_id status failure_class; do
+    outcomes_value="$(record_value "$outcomes_file" "$field")"
+    result_value="$(record_value "$result_file" "$field")"
+    if [ "$outcomes_value" != "$result_value" ]; then
+        echo "primary outcomes/result mismatch: $field" >&2
+        exit 1
+    fi
+done
+
+echo "verified evidence result; declared summary reconciliation does not establish evaluator truth or outcome sufficiency"

@@ -16,7 +16,16 @@ research evidence remains auditable as the implementation changes.
 Run the focused-validator suite with `./test-all.sh`. Validate publishable
 current records, excluding invalid fixtures, with `./validate-tree.sh`.
 
-Frontier eligibility is derived only from the supplied append-only
-contamination records; the guard cannot detect undisclosed exposure. Passing
-these validators checks record structure and relationships, not BoOS itself:
-it does not validate BoOS.
+`check-frontier-eligibility.sh` retains its compatibility name, but it checks
+only whether an exact tuple matches one of the supplied append-only
+contamination records. Exit 0 does not establish target membership or frontier
+eligibility: registration records contain no case, family, or metric roster,
+and the guard cannot detect undisclosed exposure. An exact match exits 1 and
+retires that registered tuple.
+
+Primary outcomes use a strict versioned schema. Result verification checks
+their byte digest, validates their structure, and reconciles the declared
+`result_id`, `status`, and `failure_class` with the result summary. This checks
+declared summary consistency, not evaluator truth or outcome sufficiency.
+Passing these validators checks bounded structure and relationships, not BoOS
+itself, construct validity, benchmark sufficiency, or semantic neutrality.

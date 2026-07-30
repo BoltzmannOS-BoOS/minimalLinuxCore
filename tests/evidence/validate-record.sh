@@ -7,7 +7,9 @@ evidence_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "$evidence_dir/validators/claim.sh"
 . "$evidence_dir/validators/registration.sh"
 . "$evidence_dir/validators/contamination.sh"
+. "$evidence_dir/validators/result-summary.sh"
 . "$evidence_dir/validators/result.sh"
+. "$evidence_dir/validators/outcomes.sh"
 
 record_file="${1:?usage: validate-record.sh <record.kv>}"
 test -f "$record_file" || {
@@ -36,6 +38,10 @@ case "$schema" in
     boos.evidence.result.v1)
         validate_result "$record_file"
         echo "valid evidence result"
+        ;;
+    boos.evidence.primary-outcomes.v1)
+        validate_outcomes "$record_file"
+        echo "valid evidence primary outcomes"
         ;;
     *)
         echo "unsupported evidence schema: $schema" >&2

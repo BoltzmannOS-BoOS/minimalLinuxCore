@@ -91,5 +91,5 @@ Run the validator's own tests with:
 ## Recorded Runs
 
 - [`2026-07-30-pair-001`](runs/2026-07-30-pair-001/README.md) — first
-  exploratory pair; the semantic view reduced interactions but increased
-  observation bytes.
+  exploratory pair; baseline recorded 12 interactions and 6,013 observation
+  bytes, while object recorded 7 interactions and 15,555 observation bytes.

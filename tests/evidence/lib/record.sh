@@ -105,10 +105,13 @@ require_nonnegative_integer() {
 require_positive_integer() {
     require_nonnegative_integer "$1" "$2" || return 1
     actual_value="$(record_value "$1" "$2")"
-    if [ "$actual_value" -eq 0 ]; then
-        fail_record "$2 must be a positive integer"
-        return 1
-    fi
+    case "$actual_value" in
+        *[1-9]*) ;;
+        *)
+            fail_record "$2 must be a positive integer"
+            return 1
+            ;;
+    esac
 }
 
 require_sha256() {
