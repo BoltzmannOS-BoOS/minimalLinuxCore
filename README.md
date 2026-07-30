@@ -136,6 +136,10 @@ Operators must provide an exact comma-separated `BOOS_FETCH_ALLOWLIST`; the
 gateway then permits only HTTPS on port 443 to those hostnames and rejects
 hosts that resolve to non-public addresses.
 
+The gateway protocol is plain TCP, not TLS. Treat external binding as a
+private-network interface or carry it through an authenticated encrypted
+tunnel; a token alone does not protect traffic from passive interception.
+
 ## Current Research: Semantic Object Layer
 
 BoOS is testing a semantic ABI above Linux rather than another agent runtime.
