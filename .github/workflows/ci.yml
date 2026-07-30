@@ -42,25 +42,18 @@ jobs:
         working-directory: src/rust
         run: cargo build --locked --release --target x86_64-unknown-linux-musl
 
-      - name: Fetch Alpine kernel and base initramfs
-        run: |
-          mkdir -p build
-          docker run --rm -v "$PWD/build:/out" alpine:3.21 sh -euc '
-            apk add --no-cache linux-virt
-            cp /boot/vmlinuz-virt /out/vmlinuz
-            cp /boot/initramfs-virt /out/initramfs-virt
-          '
-
       - name: Assemble traceable initramfs from repository rootfs
         run: |
+          mkdir -p build
           source_date_epoch=$(git show -s --format=%ct "$GITHUB_SHA")
           docker run --rm \
             -v "$PWD:/work" \
             -w /work \
             alpine:3.21 sh -euc '
-              apk add --no-cache coreutils cpio findutils
+              apk add --no-cache coreutils cpio findutils linux-virt
+              cp /boot/vmlinuz-virt build/vmlinuz
               scripts/assemble-initramfs.sh \
-                build/initramfs-virt \
+                /boot/initramfs-virt \
                 rootfs \
                 src/rust/target/x86_64-unknown-linux-musl/release/boos \
                 build/initramfs.cpio.gz \
