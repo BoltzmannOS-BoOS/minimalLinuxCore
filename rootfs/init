@@ -36,13 +36,24 @@ echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
 echo "================================================"
 
-echo "[init] creating system users..."
-/bin/busybox adduser -D -s /bin/sh boos-gateway
-/bin/busybox adduser -D -s /bin/sh boos-agent
+echo "[init] validating system identities..."
+if ! /bin/busybox grep -q '^boos-gateway:' /etc/passwd ||
+   ! /bin/busybox grep -q '^boos-agent:' /etc/passwd; then
+    echo "[init] fatal: required BoOS identities are missing"
+    exit 1
+fi
 
 # The supervisor deliberately drops gateway privileges through BusyBox su.
 # Expose only that required applet instead of relying on the base initramfs.
 /bin/busybox ln -sf busybox /bin/su
+
+mkdir -p /var/boos/memory /var/boos/daemons
+: > /var/boos/last-cmd
+: > /var/log/boos.log
+/bin/busybox chown -R boos-gateway:boos-gateway /var/boos/requests /var/boos/memory
+/bin/busybox chown boos-gateway:boos-gateway /var/boos/last-cmd /var/log/boos.log
+/bin/busybox chmod 750 /var/boos/requests /var/boos/memory
+/bin/busybox chmod 640 /var/boos/last-cmd /var/log/boos.log
 
 if [ -f /etc/boos/agent.conf ]; then
     /bin/busybox chown boos-gateway:boos-gateway /etc/boos/agent.conf

@@ -38,18 +38,18 @@ qemu-system-x86_64 \
 QEMU_PID=$!
 
 echo "Waiting for gateway on port ${GATEWAY_PORT}..."
-for i in $(seq 1 60); do
+for i in $(seq 1 30); do
     readiness_output=$(printf 'help\n' | nc -w 1 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null || true)
     if echo "$readiness_output" | grep -q "BoOS commands"; then
         echo "Gateway is up (attempt $i)."
         break
     fi
-    if [ "$i" -eq 60 ]; then
+    if [ "$i" -eq 30 ]; then
         echo "TIMEOUT: gateway did not start"
         tail -200 build/ci-qemu.log
         exit 1
     fi
-    sleep 2
+    sleep 1
 done
 
 failures=0
