@@ -53,6 +53,7 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/lib",
     "/boot",
     "/proc",
+    "/var/boos/requests",
     "/var/boos/results",
     "/var/boos/memory",
     "/var/log",

@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config;
 use crate::log;
+use crate::queue_lock::QueueProcessorLock;
 use crate::registry;
 
 /// Execute a command and capture its output, enforcing MAX_OUTPUT_BYTES limit.
@@ -130,9 +131,30 @@ fn walk_dir(dir: &Path, result: &mut Vec<String>, since: f64, depth: u32) -> io:
 }
 
 pub fn main() {
-    // Ensure directories exist
-    let _ = fs::create_dir_all(config::REQ_DIR);
-    let _ = fs::create_dir_all(config::RESULT_DIR);
+    for directory in [config::REQ_DIR, config::RESULT_DIR] {
+        if let Err(error) = fs::create_dir_all(directory) {
+            eprintln!("Cannot prepare queue directory {}: {}", directory, error);
+            return;
+        }
+    }
+
+    let lock_path = Path::new(config::REQ_DIR).join(".processor.lock");
+    let _queue_lock = match QueueProcessorLock::acquire(&lock_path) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            println!("Queue processor already active.");
+            return;
+        }
+        Err(error) => {
+            eprintln!("Cannot lock request queue: {}", error);
+            log::log(
+                "boos-process",
+                "queue_lock_error",
+                &[("error", &error.to_string())],
+            );
+            return;
+        }
+    };
 
     let trace = log::get_trace_level();
     let mut processed = 0u32;
