@@ -12,6 +12,7 @@ mod submit;
 mod exec;
 mod exec_file;
 mod process;
+mod queue_lock;
 mod gateway;
 mod supervisor;
 mod shell;

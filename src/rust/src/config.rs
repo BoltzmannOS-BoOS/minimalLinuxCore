@@ -149,6 +149,8 @@ mod path_tests {
         assert!(!is_protected_path("/var/scripts/myscript.sh"));
         // But /var/boos/results IS protected (must use submit pipeline)
         assert!(is_protected_path("/var/boos/results/req-1.out"));
+        // Requests must also enter through submit so metadata cannot be forged.
+        assert!(is_protected_path("/var/boos/requests/req-forged"));
     }
 
     #[cfg(unix)]
