@@ -5,6 +5,7 @@ evidence_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "$evidence_dir/lib/record.sh"
 . "$evidence_dir/validators/incident.sh"
 . "$evidence_dir/validators/claim.sh"
+. "$evidence_dir/validators/registration.sh"
 
 record_file="${1:?usage: validate-record.sh <record.kv>}"
 test -f "$record_file" || {
@@ -21,6 +22,10 @@ case "$schema" in
     boos.evidence.claim.v1)
         validate_claim "$record_file"
         echo "valid evidence claim"
+        ;;
+    boos.evidence.registration.v1)
+        validate_registration "$record_file"
+        echo "valid evidence registration"
         ;;
     *)
         echo "unsupported evidence schema: $schema" >&2
