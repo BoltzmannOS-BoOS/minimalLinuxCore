@@ -6,15 +6,30 @@ validator="$evidence_dir/validate-record.sh"
 verifier="$evidence_dir/verify-result.sh"
 registration="$evidence_dir/fixtures/valid/registration.kv"
 valid_result="$evidence_dir/fixtures/valid/result.kv"
-temporary_dir="$(mktemp -d)"
-unsafe_trace_link="$evidence_dir/fixtures/valid/unsafe-trace-link"
-trap 'rm -f "$unsafe_trace_link"; rm -rf "$temporary_dir"' EXIT HUP INT TERM
+temporary_dir="$(mktemp -d "$evidence_dir/result-test.XXXXXX")"
+temporary_path="tests/evidence/$(basename -- "$temporary_dir")"
+trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
 
 expect_failure() {
     description="$1"
     shift
     if "$@" >"$temporary_dir/stdout" 2>"$temporary_dir/stderr"; then
         echo "expected failure: $description" >&2
+        exit 1
+    fi
+}
+
+expect_failure_message() {
+    description="$1"
+    expected_message="$2"
+    shift 2
+    if "$@" >"$temporary_dir/stdout" 2>"$temporary_dir/stderr"; then
+        echo "expected failure: $description" >&2
+        exit 1
+    fi
+    if ! grep -F -x "$expected_message" "$temporary_dir/stderr" >/dev/null; then
+        echo "expected failure message: $description" >&2
+        cat "$temporary_dir/stderr" >&2
         exit 1
     fi
 }
@@ -27,6 +42,16 @@ expect_failure "result trace hash is malformed" \
 expect_failure "passing result reports a failure class" \
     "$validator" "$evidence_dir/fixtures/invalid/result-pass-with-failure.kv"
 "$verifier" "$registration" "$valid_result" >/dev/null
+if ! LC_ALL=definitely-invalid "$verifier" "$registration" "$valid_result" \
+    >"$temporary_dir/locale-stdout" 2>"$temporary_dir/locale-stderr"; then
+    echo "expected verification to succeed under an invalid inherited locale" >&2
+    exit 1
+fi
+if [ -s "$temporary_dir/locale-stderr" ]; then
+    echo "artifact hashing emitted diagnostics under an invalid inherited locale" >&2
+    cat "$temporary_dir/locale-stderr" >&2
+    exit 1
+fi
 
 sed \
     's/^case_bundle_sha256=.*/case_bundle_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/' \
@@ -46,13 +71,19 @@ sed \
 expect_failure "recorded outcomes digest does not match outcome bytes" \
     "$verifier" "$registration" "$temporary_dir/wrong-outcomes-content.kv"
 
-printf 'outside trace\n' >"$temporary_dir/outside-trace.txt"
-ln -s "$temporary_dir/outside-trace.txt" "$unsafe_trace_link"
 sed \
-    -e 's%^trace_path=.*%trace_path=tests/evidence/fixtures/valid/unsafe-trace-link%' \
-    -e 's/^trace_sha256=.*/trace_sha256=e5a1702caadf9242231a496c58f673bf5327eb20e2d8cbb16eadf1eafcda81e2/' \
+    "s%^trace_path=.*%trace_path=$temporary_path/missing-trace.txt%" \
+    "$valid_result" >"$temporary_dir/missing-trace.kv"
+expect_failure_message "safe repository-relative trace path does not exist" \
+    "trace file not found: $temporary_path/missing-trace.txt" \
+    "$verifier" "$registration" "$temporary_dir/missing-trace.kv"
+
+ln -s /etc "$temporary_dir/unsafe-parent"
+sed \
+    "s%^trace_path=.*%trace_path=$temporary_path/unsafe-parent/hosts%" \
     "$valid_result" >"$temporary_dir/unsafe-trace-path.kv"
-expect_failure "artifact paths must not resolve outside the repository" \
+expect_failure_message "artifact paths must not resolve outside the repository" \
+    "trace path is unsafe: $temporary_path/unsafe-parent/hosts" \
     "$verifier" "$registration" "$temporary_dir/unsafe-trace-path.kv"
 
 echo "evidence result validator tests passed"

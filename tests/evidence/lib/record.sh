@@ -166,11 +166,12 @@ require_relative_path() {
 sha256_file() {
     file_path="$1"
     if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$file_path" | awk '{ print $1 }'
+        sha256_output="$(LC_ALL=C sha256sum "$file_path")" || return 1
     elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$file_path" | awk '{ print $1 }'
+        sha256_output="$(LC_ALL=C shasum -a 256 "$file_path")" || return 1
     else
         fail_record "no SHA-256 command available"
         return 1
     fi
+    printf '%s\n' "$sha256_output" | awk '{ print $1 }'
 }

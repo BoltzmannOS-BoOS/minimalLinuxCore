@@ -32,6 +32,7 @@ resolve_regular_artifact() {
     }
     physical_path="$physical_directory/$(basename -- "$candidate_path")"
 
+    # This local validator assumes no concurrent untrusted mutation between these path checks and the SHA-256 reads below.
     case "$physical_path" in
         "$repo_root"/*) ;;
         *)
