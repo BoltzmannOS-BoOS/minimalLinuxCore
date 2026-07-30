@@ -53,6 +53,18 @@ mkdir "$merged_root"
 cp -a "$rootfs_dir/." "$merged_root/"
 install -m 0755 "$boos_binary" "$merged_root/bin/boos"
 
+# The project rootfs intentionally supplies its own static BusyBox. Its modprobe
+# cannot pass Alpine's compressed modules to the kernel, so normalize the
+# modules at the image boundary and discard the now-stale binary dependency
+# index. BusyBox modprobe reads the updated text index.
+if [ -d "$merged_root/lib/modules" ]; then
+    find "$merged_root/lib/modules" -type f -name '*.ko.gz' -exec gzip -d {} \;
+    find "$merged_root/lib/modules" -type f \
+        \( -name modules.dep -o -name modules.order \) \
+        -exec sed -i 's/\.ko\.gz/.ko/g' {} \;
+    find "$merged_root/lib/modules" -type f -name modules.dep.bin -delete
+fi
+
 for command_name in exec process submit gateway supervisor shell agent; do
     ln -sfn boos "$merged_root/bin/boos-$command_name"
 done

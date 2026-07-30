@@ -53,6 +53,19 @@ for i in $(seq 1 30); do
 done
 
 failures=0
+test_boot_log() {
+    expected_pattern=$1
+    test_description=$2
+    printf "  %-25s " "$test_description"
+    if grep -Fq "$expected_pattern" build/ci-qemu.log; then
+        echo "PASS"
+    else
+        echo "FAIL"
+        echo "    expected QEMU log to contain: $expected_pattern"
+        failures=$((failures + 1))
+    fi
+}
+
 test_cmd() {
     test_command=$1
     expected_pattern=$2
@@ -73,6 +86,7 @@ test_cmd() {
 echo ""
 echo "=== Running integration tests ==="
 
+test_boot_log "[init] persistent /var mounted" "persistent /var"
 test_cmd "help"              "BoOS commands"       "help"
 test_cmd "status"            "kernel"               "status"
 test_cmd "commands"          "Available registered commands" "commands (list)"
