@@ -12,6 +12,7 @@ mod request_publish;
 mod submit;
 mod exec;
 mod exec_file;
+mod bounded_process;
 mod process;
 mod queue_lock;
 mod gateway_policy;
