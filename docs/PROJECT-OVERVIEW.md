@@ -152,13 +152,33 @@ BoOS 的目标是"AI 作为第一操作者的操作系统"。一个 AI 还需要
 
 ---
 
+## 当前研究方向：Semantic Object Layer（2026-07-30）
+
+BoOS 不再把“更多 agent runtime 功能”当作当前差异化方向。第一步是验证
+Linux 之上的语义 ABI：让 AI 直接观察稳定、可查询的系统对象，而不是从
+面向人的帮助文本和命令输出中反复猜测系统状态。
+
+当前只实现只读切片：命令注册表被投影为 `system` 与 `capability` 对象，
+通过 `world schema`、`world list`、`world show` 查询。它不引入新权限，
+也不绕过原有 capability policy。
+
+现有 `help` / `status` / `caps` 作为对照组。项目已经定义无 API 的配对
+A/B 实验，但在保留原始 trace、固定模型与评分口径并完成多次运行之前，
+不宣称它比现有接口更有效。
+
+- 设计：`docs/superpowers/specs/2026-07-30-boos-semantic-object-layer-design.md`
+- 实施计划：`docs/superpowers/plans/2026-07-30-boos-semantic-object-layer.md`
+- 实验协议：`tests/research/semantic-object-view/README.md`
+
+---
+
 ## 四、技术概要
 
 ```
 语言:     Rust (std only, 0 external crates except ureq)
 二进制:   x86_64-unknown-linux-musl, 2.1MB static-pie
 编译:     Docker --platform linux/amd64
-测试:     143 单元测试, 88 次攻击覆盖
+测试:     139 单元测试, 88 次攻击覆盖
 QEMU:     Alpine 6.12.91 kernel, e1000 网络, TCP 5555
 文件:     33 commits on main, GitHub: BoltzmannOS-BoOS/minimalLinuxCore
 SEED:     23 原则, 5 增长规则, 4 成本自指, 52 条精炼日志
@@ -172,6 +192,7 @@ SEED:     23 原则, 5 增长规则, 4 成本自指, 52 条精炼日志
 SEED.md                    ← 从这里开始读（23 条原则 + 架构）
 docs/attack-research.md    ← 真实世界攻击研究
 docs/development-layers.md ← Factorio 式 Layer 0→3 模型
+tests/research/semantic-object-view/ ← 语义对象 A/B 实验协议
 tests/attack-knowledge.md   ← 攻击原语 + 组合算子
 src/rust/src/config.rs     ← BIOS IMMUTABLE_DENY + PROTECTED_DIRS
 src/rust/src/gateway.rs    ← Gateway 进程（DEEPSEEK + FETCH 协议代理）

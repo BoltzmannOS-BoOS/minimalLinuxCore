@@ -127,6 +127,21 @@ Storage:
   /var/boos/memory/archive/*.mem    ← persistent knowledge
 ```
 
+## Current Research: Semantic Object Layer
+
+BoOS is testing a semantic ABI above Linux rather than another agent runtime.
+The first slice projects the command registry into stable `system` and
+`capability` objects exposed through `world schema`, `world list`, and
+`world show`.
+
+The existing `help`/`status`/`caps` interface remains the control group. No
+efficiency claim is made until paired runs preserve raw traces and satisfy the
+experiment protocol.
+
+- [Design specification](docs/superpowers/specs/2026-07-30-boos-semantic-object-layer-design.md)
+- [Implementation plan](docs/superpowers/plans/2026-07-30-boos-semantic-object-layer.md)
+- [A/B experiment protocol](tests/research/semantic-object-view/README.md)
+
 ## Key Design Decisions
 
 - **No JSON, no serde** — all config is key=value format
