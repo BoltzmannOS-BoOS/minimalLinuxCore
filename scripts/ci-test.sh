@@ -31,7 +31,7 @@ qemu-system-x86_64 \
   -append "console=ttyS0 rdinit=/init" \
   -drive file=build/var.img,format=raw,if=virtio,cache=directsync \
   -netdev user,id=net0,hostfwd=tcp::${GATEWAY_PORT}-:5555 \
-  -device e1000,netdev=net0 \
+  -device virtio-net,netdev=net0 \
   -nographic \
   -no-reboot \
   > build/ci-qemu.log 2>&1 &
