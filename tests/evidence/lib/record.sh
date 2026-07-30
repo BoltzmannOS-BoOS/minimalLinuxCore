@@ -173,5 +173,5 @@ sha256_file() {
         fail_record "no SHA-256 command available"
         return 1
     fi
-    printf '%s\n' "$sha256_output" | awk '{ print $1 }'
+    printf '%s\n' "$sha256_output" | LC_ALL=C awk '{ print $1 }'
 }

@@ -8,6 +8,7 @@ registration="$evidence_dir/fixtures/valid/registration.kv"
 valid_result="$evidence_dir/fixtures/valid/result.kv"
 temporary_dir="$(mktemp -d "$evidence_dir/result-test.XXXXXX")"
 temporary_path="tests/evidence/$(basename -- "$temporary_dir")"
+expected_trace_sha256="276d9829518f945c56158b37f9d63e86335c83ad76b661cf2460676a1e497d4c"
 trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
 
 expect_failure() {
@@ -42,14 +43,31 @@ expect_failure "result trace hash is malformed" \
 expect_failure "passing result reports a failure class" \
     "$validator" "$evidence_dir/fixtures/invalid/result-pass-with-failure.kv"
 "$verifier" "$registration" "$valid_result" >/dev/null
-if ! LC_ALL=definitely-invalid "$verifier" "$registration" "$valid_result" \
-    >"$temporary_dir/locale-stdout" 2>"$temporary_dir/locale-stderr"; then
-    echo "expected verification to succeed under an invalid inherited locale" >&2
+if ! (
+    . "$evidence_dir/lib/record.sh"
+    awk() {
+        if [ "${LC_ALL-}" != C ]; then
+            echo "digest parser did not use LC_ALL=C" >&2
+            return 1
+        fi
+        command awk "$@"
+    }
+    LC_ALL=definitely-invalid
+    export LC_ALL
+    sha256_file "$evidence_dir/fixtures/valid/trace.example.txt"
+) >"$temporary_dir/hash-stdout" 2>"$temporary_dir/hash-stderr"; then
+    echo "expected sha256_file to succeed under an invalid inherited locale" >&2
+    cat "$temporary_dir/hash-stderr" >&2
     exit 1
 fi
-if [ -s "$temporary_dir/locale-stderr" ]; then
+if [ "$(cat "$temporary_dir/hash-stdout")" != "$expected_trace_sha256" ]; then
+    echo "sha256_file returned an unexpected digest" >&2
+    cat "$temporary_dir/hash-stdout" >&2
+    exit 1
+fi
+if [ -s "$temporary_dir/hash-stderr" ]; then
     echo "artifact hashing emitted diagnostics under an invalid inherited locale" >&2
-    cat "$temporary_dir/locale-stderr" >&2
+    cat "$temporary_dir/hash-stderr" >&2
     exit 1
 fi
 
