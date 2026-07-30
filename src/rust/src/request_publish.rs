@@ -95,7 +95,7 @@ fn create_temporary_request(queue_dir: &Path, id: &str) -> io::Result<(PathBuf, 
     ))
 }
 
-fn validate_request_id(id: &str) -> io::Result<()> {
+pub(crate) fn validate_request_id(id: &str) -> io::Result<()> {
     let is_valid = id.starts_with("req-")
         && id.len() <= MAX_REQUEST_ID_BYTES
         && id
@@ -111,7 +111,7 @@ fn validate_request_id(id: &str) -> io::Result<()> {
     }
 }
 
-fn encode_kv_value(value: &str) -> String {
+pub(crate) fn encode_kv_value(value: &str) -> String {
     value
         .replace('\\', "\\\\")
         .replace('\n', "\\n")
