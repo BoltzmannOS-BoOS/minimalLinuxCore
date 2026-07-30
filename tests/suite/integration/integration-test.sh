@@ -66,6 +66,11 @@ check "commands"   "Available"        "commands"
 check "status"     "BoOS substrate"   "status"
 check "caps"       "Capabilities"     "caps"
 check "daemons"    "gateway"          "daemons"
+check "world schema"     "schema=boos.world.v1" "world" "schema"
+check "world root"       "id=system:boos"       "world" "show" "system:boos"
+check "world capability" "id=capability:help"   "world" "show" "capability:help"
+check "world filter"     "kind=capability"       "world" "list" "capability"
+check "world registered" "world"                 "commands"
 
 # --- 3. Debug / Trace Toggle ---
 echo ""

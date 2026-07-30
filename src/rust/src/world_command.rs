@@ -1,5 +1,6 @@
 use crate::config;
 use crate::world::{self, WorldError, WorldObject};
+use crate::world_sources;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CommandFailure {
@@ -51,6 +52,20 @@ pub fn render(args: &str, objects: &[WorldObject]) -> Result<String, CommandFail
             .map(world::render_object)
             .map_err(map_world_error),
         _ => Err(usage()),
+    }
+}
+
+pub fn run(args: &str) -> i32 {
+    let objects = world_sources::load_world();
+    match render(args, &objects) {
+        Ok(output) => {
+            println!("{}", output);
+            config::EXIT_ALLOWED
+        }
+        Err(failure) => {
+            eprintln!("{}", failure.message);
+            failure.exit_code
+        }
     }
 }
 
@@ -147,5 +162,12 @@ mod tests {
             render("show service:web", &objects).unwrap_err().exit_code,
             config::EXIT_ERROR
         );
+    }
+
+    #[test]
+    fn runner_preserves_allowed_unknown_and_error_exit_codes() {
+        assert_eq!(run("schema"), config::EXIT_ALLOWED);
+        assert_eq!(run("show capability:missing"), config::EXIT_UNKNOWN);
+        assert_eq!(run("unknown"), config::EXIT_ERROR);
     }
 }

@@ -15,6 +15,7 @@ fn show_help() {
     println!("  status              show system status");
     println!("  log                 show command log");
     println!("  caps                show capabilities");
+    println!("  world <query>       inspect semantic objects (schema|list|show)");
     println!("  debug [level]       show or set trace level (quiet|normal|verbose)");
     println!("  submit <command>    submit command request");
     println!("  process             process pending requests manually");
@@ -355,6 +356,7 @@ fn run_builtin(exec_target: &str, args: &str) -> i32 {
         "__builtin_status" => { show_status(); EXIT_ALLOWED }
         "__builtin_log" => { show_log(); EXIT_ALLOWED }
         "__builtin_caps" => { show_caps(); EXIT_ALLOWED }
+        "__builtin_world" => crate::world_command::run(args),
         "__builtin_debug" => {
             if args.is_empty() {
                 show_debug();
