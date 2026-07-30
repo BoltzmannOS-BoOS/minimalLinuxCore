@@ -2,6 +2,8 @@ name: BoOS CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:
@@ -76,6 +78,13 @@ jobs:
 
       - name: Boot real init and exercise gateway
         run: scripts/ci-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: boos-qemu-failure-${{ github.sha }}
+          path: build/ci-qemu.log
+          if-no-files-found: warn
 
       - uses: actions/upload-artifact@v4
         with:

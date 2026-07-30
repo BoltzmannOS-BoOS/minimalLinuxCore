@@ -16,7 +16,7 @@ echo "[init] mounting persistent /var..."
 if mount -t ext4 /dev/vda /var 2>/dev/null || mount -t ext2 /dev/vda /var 2>/dev/null; then
     echo "[init] persistent /var mounted"
     mkdir -p /var/boos/requests /var/boos/results /var/log
-    sync
+    /bin/busybox sync
 else
     echo "[init] no persistent disk, using tmpfs"
     mkdir -p /var/boos/requests /var/boos/results /var/log
@@ -37,12 +37,16 @@ echo " BoOS substrate v0"
 echo "================================================"
 
 echo "[init] creating system users..."
-adduser -D -s /bin/sh boos-gateway 2>/dev/null || true
-adduser -D -s /bin/sh boos-agent 2>/dev/null || true
+/bin/busybox adduser -D -s /bin/sh boos-gateway
+/bin/busybox adduser -D -s /bin/sh boos-agent
+
+# The supervisor deliberately drops gateway privileges through BusyBox su.
+# Expose only that required applet instead of relying on the base initramfs.
+/bin/busybox ln -sf busybox /bin/su
 
 if [ -f /etc/boos/agent.conf ]; then
-    chown boos-gateway:boos-gateway /etc/boos/agent.conf 2>/dev/null || true
-    chmod 400 /etc/boos/agent.conf 2>/dev/null || true
+    /bin/busybox chown boos-gateway:boos-gateway /etc/boos/agent.conf
+    /bin/busybox chmod 400 /etc/boos/agent.conf
     echo "[init] agent.conf protected (owner: boos-gateway, mode: 400)"
 fi
 

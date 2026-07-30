@@ -13,11 +13,14 @@ GATEWAY_PORT=15555  # offset from default 5555 to avoid conflicts
 QEMU_PID=""
 
 cleanup() {
+    cleanup_status=$?
     if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
         kill "$QEMU_PID" 2>/dev/null || true
         wait "$QEMU_PID" 2>/dev/null || true
     fi
-    rm -f build/ci-qemu.log
+    if [ "$cleanup_status" -eq 0 ]; then
+        rm -f build/ci-qemu.log
+    fi
 }
 trap cleanup EXIT
 
@@ -36,13 +39,14 @@ QEMU_PID=$!
 
 echo "Waiting for gateway on port ${GATEWAY_PORT}..."
 for i in $(seq 1 60); do
-    if echo "" | nc -w 1 127.0.0.1 ${GATEWAY_PORT} 2>/dev/null; then
+    readiness_output=$(printf 'help\n' | nc -w 1 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null || true)
+    if echo "$readiness_output" | grep -q "BoOS commands"; then
         echo "Gateway is up (attempt $i)."
         break
     fi
     if [ "$i" -eq 60 ]; then
         echo "TIMEOUT: gateway did not start"
-        cat build/ci-qemu.log
+        tail -200 build/ci-qemu.log
         exit 1
     fi
     sleep 2
