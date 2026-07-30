@@ -1,12 +1,13 @@
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::process;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config;
 use crate::log;
+use crate::request_publish::{publish_request, RequestRecord};
 
 // ... (random_suffix, generate_id unchanged)
 
@@ -27,8 +28,8 @@ fn random_suffix() -> u32 {
 
 /// Generate a unique request ID: req-<ms>-<random8hex>.
 /// Millis disambiguates across seconds; the random suffix disambiguates
-/// within the same millisecond. The O_EXCL retry in `main` is the final
-/// safety net against the astronomically rare collision.
+/// within the same millisecond. The no-replace publish step retries with a
+/// fresh ID if a collision still occurs.
 fn generate_id() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -102,58 +103,37 @@ pub fn main() {
     let requester = env::var("BOOS_REQUESTER").unwrap_or_else(|_| "unknown".to_string());
     let session_id = env::var("BOOS_SESSION").ok();
 
-    // Ensure request directory exists
-    let _ = fs::create_dir_all(config::REQ_DIR);
-
-    let id = generate_id();
-    let submitted_at = log::uptime_secs();
-
-    let mut content = format!(
-        "id={}\nrequester={}\ncommand={}\nargs={}\nsubmitted_at={:.3}\nstatus=pending\n",
-        id, requester, cmd, cmd_args_str, submitted_at
-    );
-    if let Some(ref sid) = session_id {
-        content.push_str(&format!("session_id={}\n", sid));
+    let request_dir = Path::new(config::REQ_DIR);
+    if let Err(error) = fs::create_dir_all(request_dir) {
+        eprintln!("Failed to prepare request queue: {}", error);
+        process::exit(config::EXIT_ERROR);
     }
 
-    // Atomic write: temp file + rename. Use O_EXCL for collision detection.
-    let file_path = Path::new(config::REQ_DIR).join(&id);
-    let tmp_path = Path::new(config::REQ_DIR).join(format!("{}.tmp", id));
-
-    let mut attempt = 0u32;
-    loop {
-        let target = if attempt == 0 { &file_path } else { &tmp_path };
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(target)
-        {
-            Ok(mut f) => {
-                let _ = f.write_all(content.as_bytes());
-                if attempt > 0 {
-                    // Rename tmp onto the real path (atomic on same fs).
-                    // If file_path was created by another process between our
-                    // attempts, rename will replace it — acceptable trade-off.
-                    let _ = fs::rename(&tmp_path, &file_path);
-                }
-                break;
-            }
-            Err(_) => {
-                attempt += 1;
-                if attempt > 10 {
-                    eprintln!("Failed to create request file after {} attempts", attempt);
+    let submitted_at = log::uptime_secs();
+    let id = (0..10)
+        .find_map(|_| {
+            let candidate = generate_id();
+            let record = RequestRecord {
+                id: &candidate,
+                requester: &requester,
+                command: cmd,
+                args: &cmd_args_str,
+                submitted_at,
+                session_id: session_id.as_deref(),
+            };
+            match publish_request(request_dir, &record) {
+                Ok(_) => Some(candidate),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
+                Err(error) => {
+                    eprintln!("Failed to publish request: {}", error);
                     process::exit(config::EXIT_ERROR);
                 }
-                // If tmp_path also exists, unlink and retry (broken retry from
-                // a previous crashed process could leave tmp_path behind).
-                if attempt > 1 {
-                    let _ = fs::remove_file(&tmp_path);
-                }
-                // Brief backoff to let the colliding process finish
-                std::thread::sleep(std::time::Duration::from_millis(1));
             }
-        }
-    }
+        })
+        .unwrap_or_else(|| {
+            eprintln!("Failed to allocate a unique request ID");
+            process::exit(config::EXIT_ERROR);
+        });
 
     // Log submission
     log::log(
