@@ -20,5 +20,11 @@ expect_failure "invalid contamination level" \
     "$validator" "$evidence_dir/fixtures/invalid/contamination-invalid-level.kv"
 expect_failure "contamination retained as frontier evidence" \
     "$validator" "$evidence_dir/fixtures/invalid/contamination-frontier-disposition.kv"
+expect_failure "case contamination requests a new evaluator" \
+    "$validator" "$evidence_dir/fixtures/invalid/contamination-case-new-evaluator.kv"
+expect_failure "case contamination requests claim review" \
+    "$validator" "$evidence_dir/fixtures/invalid/contamination-case-claim-review.kv"
+expect_failure "contamination omits the retired registration" \
+    "$validator" "$evidence_dir/fixtures/invalid/contamination-missing-registration-id.kv"
 
 echo "evidence contamination validator tests passed"
