@@ -132,11 +132,14 @@ Storage:
 BoOS is testing a semantic ABI above Linux rather than another agent runtime.
 The first slice projects the command registry into stable `system` and
 `capability` objects exposed through `world schema`, `world list`, and
-`world show`.
+`world show`. This remains a hypothesis and roadmap direction, not a
+benchmark-proven conclusion.
 
-The existing `help`/`status`/`caps` interface remains the control group. No
-efficiency claim is made until paired runs preserve raw traces and satisfy the
-experiment protocol.
+The exposed experiment is retained as **Test 0: Interface and Wiring Probe**.
+It supports protocol-shape and wiring checks only; it does not establish the
+necessity, sufficiency, superiority, or correctness of an AI-native OS
+boundary. The current OS-boundary claim remains unsupported. Fresh research
+claims must use the [Living Evidence System](tests/evidence/README.md).
 
 - [Design specification](docs/superpowers/specs/2026-07-30-boos-semantic-object-layer-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-07-30-boos-semantic-object-layer.md)

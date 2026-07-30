@@ -1,4 +1,4 @@
-# Semantic Object View — Pair 001
+# Test 0: Interface and Wiring Probe — Pair 001
 
 This is the first exploratory paired run of the frozen v1 protocol. Both
 variants completed all five tasks, but the hypothesis was only partially
@@ -33,8 +33,11 @@ Token usage is ancillary because it is not a v1 protocol metric:
 
 The semantic view made discovery more coherent: the model needed fewer
 round-trips, made no unsupported capability claim, and did not learn parameter
-syntax by intentionally issuing an invalid command. That supports a semantic
-ABI as a useful BoOS direction.
+syntax by intentionally issuing an invalid command. This shows that the tested
+model could consume the implemented object protocol under an
+interface-specific prompt. Because the tasks were constructed from that
+interface, the result supplies wiring evidence but no general evidence that a
+semantic ABI improves AI operation.
 
 The current enumeration shape is not compact. A single unfiltered `world list`
 returned every field for 39 capabilities plus the system object, so the object

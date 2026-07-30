@@ -1,4 +1,8 @@
-# Semantic Object View Experiment
+# Test 0: Interface and Wiring Probe
+
+This frozen protocol is retained as a regression and wiring probe. Its tasks
+and prompts were derived from the semantic-object interface and therefore
+cannot support a general claim that the interface improves AI operation.
 
 This directory defines a no-API A/B experiment for the first BoOS research
 question:
