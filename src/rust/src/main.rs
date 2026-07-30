@@ -14,6 +14,7 @@ mod exec;
 mod exec_file;
 mod process;
 mod queue_lock;
+mod gateway_policy;
 mod gateway;
 mod supervisor;
 mod shell;

@@ -353,3 +353,26 @@ pub fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn protocol_line_reader_rejects_oversized_followup_lines() {
+        let mut input = Cursor::new("123456789\n");
+
+        assert!(read_protocol_line(&mut input, 8).is_err());
+    }
+
+    #[test]
+    fn protocol_line_reader_returns_a_complete_line_without_newline() {
+        let mut input = Cursor::new("SESSION agent-a\n");
+
+        assert_eq!(
+            read_protocol_line(&mut input, 32).unwrap().unwrap(),
+            "SESSION agent-a"
+        );
+    }
+}
