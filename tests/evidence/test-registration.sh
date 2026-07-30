@@ -22,5 +22,23 @@ expect_failure "registration case digest is malformed" \
     "$validator" "$evidence_dir/fixtures/invalid/registration-bad-digest.kv"
 expect_failure "registration has no cases" \
     "$validator" "$evidence_dir/fixtures/invalid/registration-zero-cases.kv"
+expect_failure "registration has a malformed line" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-malformed-line.kv"
+expect_failure "registration has an unknown field" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-unknown-field.kv"
+expect_failure "registration is missing a required field" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-missing-analysis-method.kv"
+expect_failure "registration has a duplicate field" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-duplicate-generator-version.kv"
+expect_failure "registration case count is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-case-count.kv"
+expect_failure "registration retry budget is negative" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-negative-retry-budget.kv"
+expect_failure "registration family weights digest is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-family-weights-digest.kv"
+expect_failure "registration environment digest is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-environment-digest.kv"
+expect_failure "registration implementation commit is malformed" \
+    "$validator" "$evidence_dir/fixtures/invalid/registration-invalid-implementation-commit.kv"
 
 echo "evidence registration validator tests passed"
