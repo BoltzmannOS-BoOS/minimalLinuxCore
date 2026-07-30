@@ -10,7 +10,15 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 GATEWAY_PORT=15555  # offset from default 5555 to avoid conflicts
+CI_INITRAMFS=build/ci-initramfs.cpio.gz
+CI_GATEWAY_TOKEN_FILE=build/ci-gateway-token
 QEMU_PID=""
+
+if [ ! -f "$CI_INITRAMFS" ] || [ ! -f "$CI_GATEWAY_TOKEN_FILE" ]; then
+    echo "Authenticated CI initramfs or token is missing"
+    exit 1
+fi
+CI_GATEWAY_TOKEN=$(cat "$CI_GATEWAY_TOKEN_FILE")
 
 cleanup() {
     cleanup_status=$?
@@ -27,7 +35,7 @@ trap cleanup EXIT
 echo "=== Starting QEMU ==="
 qemu-system-x86_64 \
   -kernel build/vmlinuz \
-  -initrd build/initramfs.cpio.gz \
+  -initrd "$CI_INITRAMFS" \
   -append "console=ttyS0 rdinit=/init" \
   -drive file=build/var.img,format=raw,if=virtio,cache=directsync \
   -netdev user,id=net0,hostfwd=tcp::${GATEWAY_PORT}-:5555 \
@@ -39,7 +47,11 @@ QEMU_PID=$!
 
 echo "Waiting for gateway on port ${GATEWAY_PORT}..."
 for i in $(seq 1 30); do
-    readiness_output=$(printf 'help\n' | nc -w 1 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null || true)
+    readiness_output=$(
+        printf 'AUTH %s\nhelp\n' "$CI_GATEWAY_TOKEN" |
+            nc -w 1 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null ||
+            true
+    )
     if echo "$readiness_output" | grep -q "BoOS commands"; then
         echo "Gateway is up (attempt $i)."
         break
@@ -71,7 +83,11 @@ test_cmd() {
     expected_pattern=$2
     test_description=$3
     printf "  %-25s " "$test_description"
-    command_output=$(echo "$test_command" | nc -w 3 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null || echo "ERROR: nc failed")
+    command_output=$(
+        printf 'AUTH %s\n%s\n' "$CI_GATEWAY_TOKEN" "$test_command" |
+            nc -w 3 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null ||
+            echo "ERROR: nc failed"
+    )
     if echo "$command_output" | grep -q "$expected_pattern"; then
         echo "PASS"
     else
@@ -87,6 +103,23 @@ echo ""
 echo "=== Running integration tests ==="
 
 test_boot_log "[init] persistent /var mounted" "persistent /var"
+test_boot_log "[init] gateway token protected" "gateway token protected"
+
+printf "  %-25s " "unauthenticated rejected"
+unauthenticated_output=$(
+    printf 'help\n' |
+        nc -w 3 127.0.0.1 "$GATEWAY_PORT" 2>/dev/null ||
+        echo "ERROR: nc failed"
+)
+if echo "$unauthenticated_output" | grep -q "AUTH REQUIRED"; then
+    echo "PASS"
+else
+    echo "FAIL"
+    echo "    expected unauthenticated request to be rejected"
+    echo "    got: $(echo "$unauthenticated_output" | head -3 | tr '\n' ' ')"
+    failures=$((failures + 1))
+fi
+
 test_cmd "help"              "BoOS commands"       "help"
 test_cmd "status"            "kernel"               "status"
 test_cmd "commands"          "Available registered commands" "commands (list)"

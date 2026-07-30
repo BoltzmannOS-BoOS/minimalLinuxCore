@@ -83,6 +83,11 @@ if [ -f /etc/boos/agent.conf ]; then
     /bin/busybox chmod 400 /etc/boos/agent.conf
     echo "[init] agent.conf protected (owner: boos-gateway, mode: 400)"
 fi
+if [ -f /etc/boos/gateway_token ]; then
+    /bin/busybox chown boos-gateway:boos-gateway /etc/boos/gateway_token
+    /bin/busybox chmod 400 /etc/boos/gateway_token
+    echo "[init] gateway token protected (owner: boos-gateway, mode: 400)"
+fi
 
 echo "[init] starting boos-supervisor..."
 exec /bin/boos-supervisor

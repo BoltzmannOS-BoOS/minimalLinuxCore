@@ -103,6 +103,14 @@ pub fn special_protocol_allowed(peer: IpAddr) -> bool {
     peer.is_loopback()
 }
 
+pub fn gateway_bind_ip(has_auth_token: bool) -> Ipv4Addr {
+    if has_auth_token {
+        Ipv4Addr::UNSPECIFIED
+    } else {
+        Ipv4Addr::LOCALHOST
+    }
+}
+
 pub fn validate_session_id(session_id: &str) -> io::Result<()> {
     if config::is_valid_runtime_id(session_id) {
         Ok(())

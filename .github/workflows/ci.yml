@@ -69,6 +69,22 @@ jobs:
             src/rust/target/x86_64-unknown-linux-musl/release/boos \
             "$GITHUB_SHA"
 
+      - name: Create authenticated boot-test initramfs
+        run: |
+          mkdir -p build/ci-rootfs
+          gzip -dc build/initramfs.cpio.gz |
+            (cd build/ci-rootfs && cpio --extract --make-directories --quiet)
+          openssl rand -hex 32 > build/ci-gateway-token
+          install -m 600 \
+            build/ci-gateway-token \
+            build/ci-rootfs/etc/boos/gateway_token
+          (
+            cd build/ci-rootfs
+            find . -print0 |
+              sort -z |
+              cpio --null --format=newc --create --quiet
+          ) | gzip -n > build/ci-initramfs.cpio.gz
+
       - name: Create disposable persistent disk
         run: |
           truncate --size 64M build/var.img

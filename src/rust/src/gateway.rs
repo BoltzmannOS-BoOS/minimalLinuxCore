@@ -9,19 +9,26 @@ use std::time::Duration;
 use crate::bounded_process;
 use crate::config;
 use crate::gateway_policy::{
-    special_protocol_allowed, validate_session_id, FetchPolicy,
+    gateway_bind_ip, special_protocol_allowed, validate_session_id, FetchPolicy,
 };
 use crate::log;
 
 /// Read the gateway auth token from env or config. If not set, auth is disabled.
 fn get_auth_token() -> Option<String> {
-    env::var("BOOS_GATEWAY_TOKEN").ok().or_else(|| {
-        // Also check file: /etc/boos/gateway_token
-        std::fs::read_to_string("/etc/boos/gateway_token")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    })
+    env::var("BOOS_GATEWAY_TOKEN")
+        .ok()
+        .and_then(normalize_token)
+        .or_else(|| {
+            // Also check file: /etc/boos/gateway_token
+            std::fs::read_to_string("/etc/boos/gateway_token")
+                .ok()
+                .and_then(normalize_token)
+        })
+}
+
+fn normalize_token(token: String) -> Option<String> {
+    let token = token.trim().to_string();
+    (!token.is_empty()).then_some(token)
 }
 
 // ── DeepSeek API proxy (gateway has key access, agent doesn't) ─────────────
@@ -335,7 +342,7 @@ fn parse_protocol(
     loop {
         if !auth_done {
             if let Some(rest) = line.strip_prefix("AUTH ") {
-                if rest.trim() != token.as_ref().unwrap().as_str() {
+                if !tokens_equal(rest.trim(), token.as_ref().unwrap()) {
                     let _ = writeln!(stream, "AUTH FAILED");
                     log::log("boos-gateway", "auth_failed", &[("peer", peer)]);
                     return (None, None);
@@ -374,6 +381,17 @@ fn parse_protocol(
     (Some(line), session_id)
 }
 
+fn tokens_equal(candidate: &str, expected: &str) -> bool {
+    if candidate.len() != expected.len() {
+        return false;
+    }
+    candidate
+        .bytes()
+        .zip(expected.bytes())
+        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+        == 0
+}
+
 pub fn main() {
     // Log panics instead of silently dying
     std::panic::set_hook(Box::new(|info| {
@@ -392,11 +410,12 @@ pub fn main() {
         .unwrap_or(config::GATEWAY_DEFAULT_PORT);
 
     let token = get_auth_token();
+    let bind_ip = gateway_bind_ip(token.is_some());
 
-    let listener = match TcpListener::bind(("0.0.0.0", port)) {
+    let listener = match TcpListener::bind((bind_ip, port)) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind port {}: {}", port, e);
+            eprintln!("Failed to bind {}:{}: {}", bind_ip, port, e);
             process::exit(config::EXIT_ERROR);
         }
     };
@@ -404,6 +423,7 @@ pub fn main() {
     let auth_msg = if token.is_some() { "auth enabled" } else { "auth disabled" };
     log::log("boos-gateway", "started", &[
         ("port", &port.to_string()),
+        ("bind", &bind_ip.to_string()),
         ("auth", auth_msg),
     ]);
 
@@ -463,5 +483,12 @@ mod tests {
             read_protocol_line(&mut input, 32).unwrap().unwrap(),
             "SESSION agent-a"
         );
+    }
+
+    #[test]
+    fn token_comparison_checks_every_byte() {
+        assert!(tokens_equal("token-value", "token-value"));
+        assert!(!tokens_equal("token-valuE", "token-value"));
+        assert!(!tokens_equal("short", "token-value"));
     }
 }
