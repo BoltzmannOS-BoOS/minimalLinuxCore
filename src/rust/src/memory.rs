@@ -45,7 +45,7 @@ impl WorkingMemory {
         Self::load_from(&namespace)
     }
 
-    fn load_from(namespace: &MemoryNamespace) -> io::Result<Self> {
+    pub(crate) fn load_from(namespace: &MemoryNamespace) -> io::Result<Self> {
         let kv = read_kv(&namespace.working_path())?;
 
         Ok(WorkingMemory {
@@ -63,7 +63,7 @@ impl WorkingMemory {
         self.save_in(&namespace)
     }
 
-    fn save_in(&self, namespace: &MemoryNamespace) -> io::Result<()> {
+    pub(crate) fn save_in(&self, namespace: &MemoryNamespace) -> io::Result<()> {
         let dir = namespace.root();
         fs::create_dir_all(dir).map_err(|e| {
             log::log("boos-memory", "error", &[("op", "save_create_dir"), ("error", &e.to_string())]);

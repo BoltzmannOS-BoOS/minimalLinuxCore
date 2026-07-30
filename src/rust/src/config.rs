@@ -36,8 +36,6 @@ pub const MAX_LOG_BACKUPS: u32 = 2;
 // On a single-user local QEMU port-forward this is more than enough.
 pub const MAX_GATEWAY_THREADS: usize = 64;
 
-// Agent memory system paths
-pub const MEMORY_DIR: &str = "/var/boos/memory";
 pub const PRINCIPAL_CONFIG_DIR: &str = "/etc/boos/principals";
 pub const PRINCIPAL_RUNTIME_DIR: &str = "/var/boos/principals";
 

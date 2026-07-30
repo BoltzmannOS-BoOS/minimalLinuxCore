@@ -1,19 +1,8 @@
-//! Agent loop daemon: runs alongside gateway, manages 3-tier memory.
+//! Agent command entry point and memory builtins.
 //!
-//! The agent loop:
-//!   1. Starts a session (or joins existing)
-//!   2. Runs the gateway for AI interaction
-//!   3. Exposes memory builtins: remember, recall, observe, session
-//!   4. Periodically writes working memory to disk
-//!
-//! Architecture: boos-agent is a daemon that starts the gateway in-process
-//! (like supervisor does) and also manages memory state. The AI interacts
-//! through the gateway as usual, and memory commands are routed through
-//! boos-exec like any other command.
-
-use std::fs;
-use std::process::{Command, Child};
-use std::time::{Duration, Instant};
+//! The default mode enters the resident principal lifecycle. Experimental
+//! explore, loop, and develop modes remain explicit subcommands. Memory
+//! builtins are routed through boos-exec.
 
 use crate::config;
 use crate::log;
@@ -357,8 +346,7 @@ fn load_session_id() -> String {
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
-/// Main entry for boos-agent daemon.
-/// Starts the agent loop: initializes memory, runs gateway, polls for requests.
+/// Main entry for the resident agent and its explicit experimental subcommands.
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -453,91 +441,10 @@ pub fn main() {
         return;
     }
 
-    // Daemon mode: start agent loop with gateway
-    log::log("boos-agent", "started", &[("mode", "agent_loop")]);
-
-    // Ensure memory directory exists
-    let _ = fs::create_dir_all(config::MEMORY_DIR);
-    let _ = fs::create_dir_all(config::MEMORY_DIR.to_string() + "/recent");
-    let _ = fs::create_dir_all(config::MEMORY_DIR.to_string() + "/archive");
-
-    // Auto-start a session if none exists
-    if memory::WorkingMemory::load().is_err() {
-        let id = format!("sess-{}", memory::now_secs());
-        let wm = memory::WorkingMemory::new(id);
-        let _ = wm.save();
+    if args.len() == 1 || args.get(1).map(String::as_str) == Some("resident") {
+        std::process::exit(crate::resident_agent::run());
     }
 
-    // Start gateway in a child process
-    let port = config::GATEWAY_DEFAULT_PORT;
-    let mut gateway_child: Option<Child> = match Command::new("/bin/boos-gateway")
-        .arg(port.to_string())
-        .spawn()
-    {
-        Ok(c) => {
-            log::log("boos-agent", "gateway_started", &[
-                ("port", &port.to_string()),
-            ]);
-            Some(c)
-        }
-        Err(e) => {
-            log::log("boos-agent", "error", &[
-                ("msg", "failed to start gateway"),
-                ("error", &e.to_string()),
-            ]);
-            eprintln!("Failed to start gateway: {}", e);
-            std::process::exit(config::EXIT_ERROR);
-        }
-    };
-
-    // Periodically persist working memory and check gateway health
-    let persist_interval = Duration::from_secs(5);
-    let mut last_persist = Instant::now();
-
-    loop {
-        // Persist working memory periodically
-        if last_persist.elapsed() >= persist_interval {
-            if let Ok(mut wm) = memory::WorkingMemory::load() {
-                wm.last_updated = memory::now_secs();
-                let _ = wm.save();
-            }
-            last_persist = Instant::now();
-        }
-
-        // Check gateway health
-        if let Some(ref mut child) = gateway_child {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    log::log("boos-agent", "gateway_exited", &[
-                        ("status", &status.to_string()),
-                    ]);
-                    // Restart gateway
-                    match Command::new("/bin/boos-gateway")
-                        .arg(port.to_string())
-                        .spawn()
-                    {
-                        Ok(c) => {
-                            *child = c;
-                            log::log("boos-agent", "gateway_restarted", &[("port", &port.to_string())]);
-                        }
-                        Err(e) => {
-                            log::log("boos-agent", "error", &[
-                                ("msg", "gateway restart failed"),
-                                ("error", &e.to_string()),
-                            ]);
-                        }
-                    }
-                }
-                Ok(None) => {} // Still running
-                Err(e) => {
-                    log::log("boos-agent", "error", &[
-                        ("msg", "gateway health check failed"),
-                        ("error", &e.to_string()),
-                    ]);
-                }
-            }
-        }
-
-        std::thread::sleep(Duration::from_millis(500));
-    }
+    eprintln!("Usage: boos-agent [resident|session|explore|loop|develop]");
+    std::process::exit(config::EXIT_ERROR);
 }
