@@ -45,8 +45,8 @@ fn load_poll_interval() -> u64 {
     if let Ok(content) = fs::read_to_string(conf_path) {
         for line in content.lines() {
             let line = line.trim();
-            if line.starts_with("POLL_INTERVAL=") {
-                if let Ok(val) = line["POLL_INTERVAL=".len()..].parse::<u64>() {
+            if let Some(value) = line.strip_prefix("POLL_INTERVAL=") {
+                if let Ok(val) = value.parse::<u64>() {
                     if val > 0 {
                         return val;
                     }
@@ -350,10 +350,8 @@ pub fn main() {
 
     // Spawn enabled daemons
     for d in &daemons {
-        if d.enabled {
-            if !children.contains_key(&d.name) {
-                spawn_daemon(d, &mut children);
-            }
+        if d.enabled && !children.contains_key(&d.name) {
+            spawn_daemon(d, &mut children);
         }
     }
 

@@ -65,9 +65,12 @@ impl WorkingMemory {
 
     pub(crate) fn save_in(&self, namespace: &MemoryNamespace) -> io::Result<()> {
         let dir = namespace.root();
-        fs::create_dir_all(dir).map_err(|e| {
-            log::log("boos-memory", "error", &[("op", "save_create_dir"), ("error", &e.to_string())]);
-            e
+        fs::create_dir_all(dir).inspect_err(|error| {
+            log::log(
+                "boos-memory",
+                "error",
+                &[("op", "save_create_dir"), ("error", &error.to_string())],
+            );
         })?;
 
         let content = format!(
@@ -80,13 +83,19 @@ impl WorkingMemory {
         );
 
         let tmp = namespace.working_temp_path(&self.session_id)?;
-        fs::write(&tmp, &content).map_err(|e| {
-            log::log("boos-memory", "error", &[("op", "save_write"), ("error", &e.to_string())]);
-            e
+        fs::write(&tmp, &content).inspect_err(|error| {
+            log::log(
+                "boos-memory",
+                "error",
+                &[("op", "save_write"), ("error", &error.to_string())],
+            );
         })?;
-        fs::rename(&tmp, namespace.working_path()).map_err(|e| {
-            log::log("boos-memory", "error", &[("op", "save_rename"), ("error", &e.to_string())]);
-            e
+        fs::rename(&tmp, namespace.working_path()).inspect_err(|error| {
+            log::log(
+                "boos-memory",
+                "error",
+                &[("op", "save_rename"), ("error", &error.to_string())],
+            );
         })?;
         Ok(())
     }
@@ -205,9 +214,12 @@ pub(crate) fn recent_add_in(
     entry: RecentEntry,
 ) -> io::Result<()> {
     let dir = namespace.recent_dir();
-    fs::create_dir_all(&dir).map_err(|e| {
-        log::log("boos-memory", "error", &[("op", "recent_create_dir"), ("error", &e.to_string())]);
-        e
+    fs::create_dir_all(&dir).inspect_err(|error| {
+        log::log(
+            "boos-memory",
+            "error",
+            &[("op", "recent_create_dir"), ("error", &error.to_string())],
+        );
     })?;
 
     // Ring buffer: use a counter file to track position.
@@ -222,9 +234,12 @@ pub(crate) fn recent_add_in(
     let _ = std::fs::write(&counter_path, next_seq.to_string());
 
     let path = dir.join(format!("{}.kv", next_seq));
-    fs::write(&path, entry.to_kv()).map_err(|e| {
-        log::log("boos-memory", "error", &[("op", "recent_write"), ("error", &e.to_string())]);
-        e
+    fs::write(&path, entry.to_kv()).inspect_err(|error| {
+        log::log(
+            "boos-memory",
+            "error",
+            &[("op", "recent_write"), ("error", &error.to_string())],
+        );
     })?;
     Ok(())
 }
@@ -253,9 +268,12 @@ pub struct ArchiveEntry {
 pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::Result<()> {
     let namespace = MemoryNamespace::from_environment()?;
     let dir = namespace.archive_dir();
-    fs::create_dir_all(&dir).map_err(|e| {
-        log::log("boos-memory", "error", &[("op", "archive_create_dir"), ("error", &e.to_string())]);
-        e
+    fs::create_dir_all(&dir).inspect_err(|error| {
+        log::log(
+            "boos-memory",
+            "error",
+            &[("op", "archive_create_dir"), ("error", &error.to_string())],
+        );
     })?;
 
     let ts = now_secs();
@@ -266,9 +284,16 @@ pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::
         "key={}\nvalue={}\ncreated_at={}\nsession_id={}\ntags={}\n",
         key, sanitize_value(value), ts, session_id, tags
     );
-    fs::write(&path, content).map_err(|e| {
-        log::log("boos-memory", "error", &[("op", "archive_write"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
-        e
+    fs::write(&path, content).inspect_err(|error| {
+        log::log(
+            "boos-memory",
+            "error",
+            &[
+                ("op", "archive_write"),
+                ("key", &log::json_escape(key)),
+                ("error", &error.to_string()),
+            ],
+        );
     })?;
 
     log::log("boos-memory", "archive_set", &[
@@ -296,7 +321,7 @@ pub fn archive_search(query: &str) -> Vec<ArchiveEntry> {
     if let Ok(rd) = fs::read_dir(&dir) {
         for e in rd.filter_map(|e| e.ok()) {
             let path = e.path();
-            if path.extension().map_or(true, |e| e != "mem") {
+            if path.extension().is_none_or(|extension| extension != "mem") {
                 continue;
             }
             if let Ok(data) = fs::read_to_string(&path) {
@@ -315,7 +340,7 @@ pub fn archive_search(query: &str) -> Vec<ArchiveEntry> {
             }
         }
     }
-    results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    results.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
     results
 }
 
@@ -324,9 +349,16 @@ pub fn archive_delete(key: &str) -> io::Result<()> {
     let safe_key = sanitize_filename(key);
     let namespace = MemoryNamespace::from_environment()?;
     let path = namespace.archive_dir().join(format!("{}.mem", safe_key));
-    fs::remove_file(&path).map_err(|e| {
-        log::log("boos-memory", "error", &[("op", "archive_delete"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
-        e
+    fs::remove_file(&path).inspect_err(|error| {
+        log::log(
+            "boos-memory",
+            "error",
+            &[
+                ("op", "archive_delete"),
+                ("key", &log::json_escape(key)),
+                ("error", &error.to_string()),
+            ],
+        );
     })?;
     log::log("boos-memory", "archive_delete", &[
         ("key", &log::json_escape(key)),

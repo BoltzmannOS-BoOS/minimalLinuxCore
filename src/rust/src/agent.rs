@@ -161,7 +161,7 @@ pub fn cmd_recall(args: &str) -> i32 {
             println!("No recent entries.");
         } else {
             println!("Recent memory ({} entries):", entries.len());
-            for (_i, e) in entries.iter().rev().take(10).enumerate() {
+            for e in entries.iter().rev().take(10) {
                 println!("  [{:.0}] {} {}",
                     e.ts, e.entry_type,
                     log::json_escape(&e.content));
@@ -170,8 +170,8 @@ pub fn cmd_recall(args: &str) -> i32 {
         return config::EXIT_ALLOWED;
     }
 
-    if query.starts_with("--recent ") {
-        let n: usize = query["--recent ".len()..].trim().parse().unwrap_or(10);
+    if let Some(recent_count) = query.strip_prefix("--recent ") {
+        let n: usize = recent_count.trim().parse().unwrap_or(10);
         let entries = memory::recent_entries();
         if entries.is_empty() {
             println!("No recent entries.");
@@ -351,31 +351,26 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     // Check for session subcommands first
-    if args.len() >= 2 {
-        match args[1].as_str() {
-            "session" => {
-                let rest = args.get(2).map(|s| s.as_str()).unwrap_or("");
-                let rest2 = args[3..].join(" ");
-                match rest {
-                    "start" => {
-                        std::process::exit(cmd_session_start(&rest2));
-                    }
-                    "status" => {
-                        std::process::exit(cmd_session_status());
-                    }
-                    "end" => {
-                        std::process::exit(cmd_session_end());
-                    }
-                    "goal" => {
-                        std::process::exit(cmd_session_goal(&rest2));
-                    }
-                    _ => {
-                        eprintln!("Usage: boos-agent session <start|status|end|goal>");
-                        std::process::exit(config::EXIT_ERROR);
-                    }
-                }
+    if args.get(1).map(String::as_str) == Some("session") {
+        let rest = args.get(2).map(String::as_str).unwrap_or("");
+        let rest2 = args[3..].join(" ");
+        match rest {
+            "start" => {
+                std::process::exit(cmd_session_start(&rest2));
             }
-            _ => {}
+            "status" => {
+                std::process::exit(cmd_session_status());
+            }
+            "end" => {
+                std::process::exit(cmd_session_end());
+            }
+            "goal" => {
+                std::process::exit(cmd_session_goal(&rest2));
+            }
+            _ => {
+                eprintln!("Usage: boos-agent session <start|status|end|goal>");
+                std::process::exit(config::EXIT_ERROR);
+            }
         }
     }
 

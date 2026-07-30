@@ -278,16 +278,16 @@ pub fn process_principal_queue(context: &PrincipalContext) -> io::Result<u32> {
         if trace == log::TraceLevel::Verbose {
             log::append_log_line(&format!(
                 "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"principal\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\",\"prev\":\"{}\"}}",
-                started_at, log::json_escape(&id),
+                started_at, log::json_escape(id),
                 log::json_escape(context.id().as_str()), log::json_escape(requester),
-                log::json_escape(&cmd), log::json_escape(args), log::json_escape(prev_cmd)
+                log::json_escape(cmd), log::json_escape(args), log::json_escape(prev_cmd)
             ));
         } else {
             log::append_log_line(&format!(
                 "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"executing\",\"id\":\"{}\",\"principal\":\"{}\",\"requester\":\"{}\",\"command\":\"{}\",\"args\":\"{}\"}}",
-                started_at, log::json_escape(&id),
+                started_at, log::json_escape(id),
                 log::json_escape(context.id().as_str()), log::json_escape(requester),
-                log::json_escape(&cmd), log::json_escape(args)
+                log::json_escape(cmd), log::json_escape(args)
             ));
         }
 
@@ -375,13 +375,13 @@ pub fn process_principal_queue(context: &PrincipalContext) -> io::Result<u32> {
         if trace == log::TraceLevel::Verbose {
             log::append_log_line(&format!(
                 "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"completed\",\"id\":\"{}\",\"verdict\":\"{}\",\"exit_code\":{},\"duration_ms\":{},\"files\":\"{}\"}}",
-                log::uptime_secs(), log::json_escape(&id), verdict, exit_code, duration,
+                log::uptime_secs(), log::json_escape(id), verdict, exit_code, duration,
                 log::json_escape(&files_touched)
             ));
         } else {
             log::append_log_line(&format!(
                 "{{\"ts\":{:.3},\"component\":\"boos-process\",\"event\":\"completed\",\"id\":\"{}\",\"verdict\":\"{}\",\"exit_code\":{},\"duration_ms\":{}}}",
-                log::uptime_secs(), log::json_escape(&id), verdict, exit_code, duration
+                log::uptime_secs(), log::json_escape(id), verdict, exit_code, duration
             ));
         }
 

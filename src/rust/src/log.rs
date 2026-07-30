@@ -49,7 +49,7 @@ fn write_log_bytes(line: &[u8]) {
     let _ = f.write_all(payload);
 
     let n = LOG_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    if n % LOG_ROTATE_CHECK_EVERY == 0 {
+    if n.is_multiple_of(LOG_ROTATE_CHECK_EVERY) {
         if let Ok(meta) = f.metadata() {
             maybe_rotate_log(meta.len());
         }
@@ -115,10 +115,10 @@ pub fn json_escape(s: &str) -> String {
 pub fn log_event(component: &str, event: &str, fields: &[(&str, &str)]) {
     let trace = get_trace_level();
 
-    if trace == TraceLevel::Quiet {
-        if event != "denied" && event != "error" && event != "unknown" && event != "config" {
-            return;
-        }
+    if trace == TraceLevel::Quiet
+        && !matches!(event, "denied" | "error" | "unknown" | "config")
+    {
+        return;
     }
 
     let ts = uptime_secs();

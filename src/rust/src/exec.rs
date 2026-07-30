@@ -745,7 +745,7 @@ fn audit_timeline(context: &PrincipalContext, args: &str) -> i32 {
             }
         }
     }
-    entries.sort_by(|a, b| b.1.modified().ok().cmp(&a.1.modified().ok()));
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.1.modified().ok()));
 
     println!("Timeline (last {} actions):", n.min(entries.len()));
     for (path_str, _) in entries.iter().take(n) {

@@ -45,7 +45,7 @@ fn load_commands_from_dir(dir: &Path) -> std::io::Result<Vec<Command>> {
 
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "cmd") {
+        if path.extension().is_some_and(|ext| ext == "cmd") {
             let kv = parse_kv_file(&path);
 
             let name = kv.get("name").cloned().unwrap_or_default();
@@ -103,7 +103,9 @@ fn parse_params(s: &str) -> Vec<ParamDef> {
             }
             let parts: Vec<&str> = p.splitn(2, ':').collect();
             let name = parts[0].trim().to_string();
-            let required = parts.get(1).map_or(true, |r| r.trim() == "required");
+            let required = parts
+                .get(1)
+                .is_none_or(|requirement| requirement.trim() == "required");
             Some(ParamDef { name, required })
         })
         .collect()
@@ -112,7 +114,7 @@ fn parse_params(s: &str) -> Vec<ParamDef> {
 /// Check if a capability enable flag is set to 1.
 pub fn is_enabled(flag: &str) -> bool {
     let path = Path::new(config::CAP_FILE);
-    let kv = parse_kv_file(&path);
+    let kv = parse_kv_file(path);
     kv.get(flag).map(|v| v == "1").unwrap_or(false)
 }
 
@@ -144,7 +146,7 @@ mod tests {
         assert_eq!(kv.get("capability").unwrap(), "allow_test");
         assert_eq!(kv.get("description").unwrap(), "run a test");
         assert_eq!(kv.get("exec").unwrap(), "__builtin_test");
-        assert!(kv.get("nonexistent").is_none());
+        assert!(!kv.contains_key("nonexistent"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

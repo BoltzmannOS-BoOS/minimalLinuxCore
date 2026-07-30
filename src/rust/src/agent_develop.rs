@@ -79,7 +79,7 @@ fn build_develop_context(
         let mut total = 0u32;
         let mut failures = 0u32;
         for e in entries.filter_map(|e| e.ok()) {
-            if e.path().extension().map_or(false, |ext| ext == "out") {
+            if e.path().extension().is_some_and(|ext| ext == "out") {
                 let kv = crate::registry::parse_kv_file(&e.path());
                 total += 1;
                 let v = kv.get("verdict").map(|s| s.as_str()).unwrap_or("");
@@ -192,7 +192,11 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("WRITE error: {}", e),
  }
     } else if upper.starts_with("CHECKPOINT") {
-        let label = if action.len() > 11 { &action[11..].trim() } else { "manual" };
+        let label = if action.len() > 11 {
+            action[11..].trim()
+        } else {
+            "manual"
+        };
         let ck = crate::checkpoint::CheckpointManager::new();
         let actions: Vec<String> = Vec::new();
         let id = ck.create("develop-session", label, &actions, 0, None);
@@ -262,11 +266,17 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("FETCH: gateway unreachable ({})", e),
         }
     } else if upper.starts_with("SELF-STATE") {
-        return format!("session: agent-{} uptime: ok memory: ok attack: verified boundary: self", std::process::id());
+        format!(
+            "session: agent-{} uptime: ok memory: ok attack: verified boundary: self",
+            std::process::id()
+        )
     } else if upper.starts_with("HEALTH-CHECK") {
-        return "HEALTH: PASS (WARN count: 0)".to_string();
+        "HEALTH: PASS (WARN count: 0)".to_string()
     } else if upper.starts_with("IDENTITY") {
-        return format!("session: agent-{} (boos-gateway: trusted, boos-supervisor: trusted)", std::process::id());
+        format!(
+            "session: agent-{} (boos-supervisor: trusted, boos-gateway: optional-adapter)",
+            std::process::id()
+        )
  } else if upper.starts_with("AUTO-ATTACK") {
  match std::process::Command::new("sh").args(["../tests/auto-attack.sh"]).output() {
      Ok(o) => {
@@ -555,7 +565,11 @@ pub fn run_develop(context: &PrincipalContext, goal: &str, max_loops: u32) {
 
         if action.eq_ignore_ascii_case("DONE") || action.to_uppercase().starts_with("DONE") {
             println!("── Agent: task complete.");
-            let summary = if action.len() > 5 { &action[4..].trim() } else { "no summary" };
+            let summary = if action.len() > 5 {
+                action[4..].trim()
+            } else {
+                "no summary"
+            };
             let fact = format!("DONE: {}", summary);
             recent_actions.push(fact.clone());
             memory::recent_add(memory::RecentEntry::new("develop", &fact, &session_id)).ok();
@@ -899,10 +913,10 @@ mod tests {
         
         let dir = "/tmp/boos-attack-cargo";
         let _ = std::fs::create_dir_all(dir);
-        std::fs::write(&format!("{}/Cargo.toml", dir),
+        std::fs::write(format!("{}/Cargo.toml", dir),
             "[package]\nname = \"atk\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").ok();
-        std::fs::create_dir_all(&format!("{}/src", dir)).ok();
-        std::fs::write(&format!("{}/src/lib.rs", dir), "").ok();
+        std::fs::create_dir_all(format!("{}/src", dir)).ok();
+        std::fs::write(format!("{}/src/lib.rs", dir), "").ok();
 
         // Plant malicious build.rs via develop WRITE (simulates agent action)
         let r = execute_develop_action(&format!("WRITE {}/build.rs {}", dir, "fn main() { println!(\"cargo:warning=BUILD_RS_RAN\"); }"));

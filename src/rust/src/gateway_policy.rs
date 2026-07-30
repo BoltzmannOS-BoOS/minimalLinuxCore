@@ -46,7 +46,7 @@ impl FetchPolicy {
             io::Error::new(io::ErrorKind::InvalidInput, "FETCH requires HTTPS")
         })?;
         let authority_end = remainder
-            .find(|character| matches!(character, '/' | '?' | '#'))
+            .find(['/', '?', '#'])
             .unwrap_or(remainder.len());
         let authority = &remainder[..authority_end];
         if authority.is_empty() || authority.contains('@') || authority.starts_with('[') {
@@ -75,7 +75,7 @@ impl FetchPolicy {
         }
 
         let clean_end = url
-            .find(|character| matches!(character, '?' | '#'))
+            .find(['?', '#'])
             .unwrap_or(url.len());
         Ok(ValidatedFetchUrl {
             url: url[..clean_end].to_string(),
