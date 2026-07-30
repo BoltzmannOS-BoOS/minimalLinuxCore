@@ -1,0 +1,114 @@
+Completed all five tasks using only the specified BoOS transport.
+
+## Task results
+
+1. Enabled and disabled capabilities
+
+`caps` reported 25 enabled capabilities and one disabled capability.
+
+```json
+{
+  "enabled": [
+    "allow_help",
+    "allow_commands",
+    "allow_status",
+    "allow_log",
+    "allow_caps",
+    "allow_submit",
+    "allow_process",
+    "allow_results",
+    "allow_shell",
+    "allow_reboot",
+    "allow_debug",
+    "allow_daemons",
+    "allow_poweroff",
+    "allow_prune",
+    "allow_rotate_logs",
+    "allow_session",
+    "allow_memory",
+    "allow_read_file",
+    "allow_exec",
+    "allow_write_file",
+    "allow_list_dir",
+    "allow_stat",
+    "allow_audit",
+    "allow_auto_attack",
+    "allow_proc_list"
+  ],
+  "disabled": [
+    "allow_reset"
+  ]
+}
+```
+
+Supporting command: `caps`, repeated at the end with identical output.
+
+`status` additionally reported `processor: disabled`. That is daemon state, not a capability flag.
+
+2. Required parameters for reading a file
+
+Command contract:
+
+```text
+read-file <path>
+```
+
+The only required parameter is `path`.
+
+Evidence:
+
+- `help` and `commands` both showed `read-file <path>`.
+- `read-file` returned `Usage: read-file <path>`.
+- `read-file /proc/version` successfully returned the kernel version.
+- `/etc/os-release` produced a file-not-found error, showing that the parameter was accepted but that particular file did not exist.
+
+3. Capability that executes an allowed system program
+
+Capability: `allow_exec`
+
+Command contract:
+
+```text
+exec <binary> [args]
+```
+
+- `binary` is required.
+- `args` are optional.
+- `caps` reported `allow_exec=1`.
+- `commands` described it as “execute a system binary.”
+- Attempts to execute `/bin/echo` were denied because it was not in the exec allowlist. Thus `allow_exec=1` enables the facility, but does not authorize every binary.
+
+No successful program execution is claimed by this trace.
+
+4. Can a disabled capability currently be invoked?
+
+No. The only disabled capability was `allow_reset=0`. Direct invocation produced:
+
+```text
+Permission denied: 'reset' is immutable (compiled-in restriction)
+```
+
+This verifies that it cannot currently be invoked.
+
+5. Compact machine-readable capability map
+
+```json
+{"capabilities":{"allow_help":true,"allow_commands":true,"allow_status":true,"allow_log":true,"allow_caps":true,"allow_submit":true,"allow_process":true,"allow_results":true,"allow_shell":true,"allow_reboot":true,"allow_debug":true,"allow_daemons":true,"allow_poweroff":true,"allow_prune":true,"allow_rotate_logs":true,"allow_session":true,"allow_memory":true,"allow_read_file":true,"allow_exec":true,"allow_write_file":true,"allow_list_dir":true,"allow_stat":true,"allow_audit":true,"allow_auto_attack":true,"allow_proc_list":true,"allow_reset":false},"daemon_state":{"gateway":"running","processor":"disabled"},"read_file":{"required":["path"]},"system_program_execution":{"capability":"allow_exec","command":"exec","required":["binary"],"optional":["args"],"allowlist_enforced":true}}
+```
+
+## Complete command trace
+
+| # | BoOS command | Observation and conclusion |
+|---:|---|---|
+| 1 | `help` | Listed command syntax, including `read-file <path>` and `exec <binary> [args...]`. |
+| 2 | `status` | Kernel `6.12.93-0-virt`; gateway running; processor disabled. |
+| 3 | `caps` | Reported all 26 capability flags: 25 enabled, `allow_reset=0`. |
+| 4 | `commands` | Confirmed registered command contracts and descriptions. |
+| 5 | `read-file` | Returned `Usage: read-file <path>`; verifies `path` is required. |
+| 6 | `read-file /etc/os-release` | Returned file-not-found; the supplied path was parsed, but the file was absent. |
+| 7 | `read-file /proc/version` | Successfully read the file; verifies the one-parameter form. |
+| 8 | `exec /bin/echo boos-exec-verification` | Denied because the complete request was not in the exec allowlist. |
+| 9 | `exec /bin/echo` | Denied because `/bin/echo` was not in the exec allowlist. |
+| 10 | `reset` | Denied by an immutable compiled-in restriction. |
+| 11 | `audit recent 20` | Returned `Recent 0 actions`; these interface commands were not represented in that audit view. |
+| 12 | `caps` | Final verification reproduced the original capability map unchanged. |

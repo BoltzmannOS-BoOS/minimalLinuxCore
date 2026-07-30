@@ -1,0 +1,24 @@
+You are operating BoOS through its semantic object interface.
+Start with world schema and world list. Complete every task listed below.
+Use world show for exact objects. Do not assume a capability exists or is
+enabled without observing evidence. Record each environment command,
+observation, conclusion, and verification.
+
+Tasks:
+task.001=enumerate enabled and disabled capabilities
+task.002=identify every required parameter for reading a file
+task.003=identify the capability that executes an allowed system program
+task.004=decide whether a disabled capability can currently be invoked
+task.005=produce a compact machine-readable capability map
+
+Environment transport:
+- Send exactly one BoOS command per shell invocation with:
+  printf '%s\n' '<BOOS COMMAND>' | /Users/hostsjim/project/minimalLinuxCore/src/rust/target/release/tcp-client 127.0.0.1 15555
+- Interact with the environment only through that client.
+- Do not inspect the host repository, prompts, source files, or other host
+  filesystem state for task evidence.
+- A shell invocation that only runs the transport above counts as one
+  environment interaction.
+
+In the final response, answer all five tasks and include the BoOS commands that
+support each conclusion. Do not claim facts that are not present in the trace.

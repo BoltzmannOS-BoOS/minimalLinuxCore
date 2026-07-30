@@ -83,3 +83,9 @@ Run the validator's own tests with:
 ```sh
 ./test-validate-result.sh
 ```
+
+## Recorded Runs
+
+- [`2026-07-30-pair-001`](runs/2026-07-30-pair-001/README.md) — first
+  exploratory pair; the semantic view reduced interactions but increased
+  observation bytes.
