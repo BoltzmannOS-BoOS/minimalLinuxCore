@@ -220,4 +220,14 @@ mod tests {
         assert!(validate_session_id("../shared").is_err());
         assert!(validate_session_id("").is_err());
     }
+
+    #[test]
+    fn unauthenticated_gateway_is_restricted_to_loopback() {
+        assert_eq!(gateway_bind_ip(false), Ipv4Addr::LOCALHOST);
+    }
+
+    #[test]
+    fn authenticated_gateway_can_accept_external_connections() {
+        assert_eq!(gateway_bind_ip(true), Ipv4Addr::UNSPECIFIED);
+    }
 }
