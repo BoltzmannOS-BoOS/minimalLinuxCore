@@ -41,6 +41,8 @@ pub const MAX_GATEWAY_THREADS: usize = 64;
 
 // Agent memory system paths
 pub const MEMORY_DIR: &str = "/var/boos/memory";
+pub const PRINCIPAL_CONFIG_DIR: &str = "/etc/boos/principals";
+pub const PRINCIPAL_RUNTIME_DIR: &str = "/var/boos/principals";
 
 pub fn is_valid_runtime_id(id: &str) -> bool {
     !id.is_empty()
