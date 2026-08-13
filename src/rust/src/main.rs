@@ -5,12 +5,22 @@ mod config;
 mod checkpoint;
 mod log;
 mod registry;
+mod world;
+mod world_sources;
+mod world_command;
+mod request_publish;
 mod submit;
 mod exec;
+mod exec_file;
+mod bounded_process;
 mod process;
+mod queue_lock;
+mod queue_record;
+mod gateway_policy;
 mod gateway;
 mod supervisor;
 mod shell;
+mod memory_namespace;
 mod memory;
 mod agent;
 mod explore;
@@ -34,7 +44,7 @@ fn main() {
         "boos-agent"      => agent::main(),
         _ => {
             eprintln!("Usage: boos-{{submit,exec,process,gateway,supervisor,shell,agent}} ...");
-            std::process::exit(1);
+            std::process::exit(crate::config::EXIT_ERROR);
         }
     }
 }

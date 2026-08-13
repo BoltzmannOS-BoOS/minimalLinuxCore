@@ -1,65 +1,108 @@
 use std::env;
-use std::io::{BufRead, BufReader, Write, Read};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use crate::bounded_process;
 use crate::config;
+use crate::gateway_policy::{
+    gateway_bind_ip, special_protocol_allowed, validate_session_id, FetchPolicy,
+};
 use crate::log;
 
 /// Read the gateway auth token from env or config. If not set, auth is disabled.
 fn get_auth_token() -> Option<String> {
-    env::var("BOOS_GATEWAY_TOKEN").ok().or_else(|| {
-        // Also check file: /etc/boos/gateway_token
-        std::fs::read_to_string("/etc/boos/gateway_token")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    })
+    env::var("BOOS_GATEWAY_TOKEN")
+        .ok()
+        .and_then(normalize_token)
+        .or_else(|| {
+            // Also check file: /etc/boos/gateway_token
+            std::fs::read_to_string("/etc/boos/gateway_token")
+                .ok()
+                .and_then(normalize_token)
+        })
+}
+
+fn normalize_token(token: String) -> Option<String> {
+    let token = token.trim().to_string();
+    (!token.is_empty()).then_some(token)
 }
 
 // ── DeepSeek API proxy (gateway has key access, agent doesn't) ─────────────
 
 fn load_api_key() -> Option<String> {
-    std::fs::read_to_string("/etc/boos/agent.conf").ok().and_then(|data| {
-        for line in data.lines() {
-            if let Some(val) = line.trim().strip_prefix("api_key=") {
-                if !val.trim().is_empty() { return Some(val.trim().to_string()); }
-            }
-        }
-        None
-    })
+    // Priority: env var (no file, no disk exposure), then fallback to file
+    std::env::var("BOOS_API_KEY").ok()
+        .or_else(|| {
+            std::fs::read_to_string("/etc/boos/agent.conf").ok().and_then(|data| {
+                for line in data.lines() {
+                    if let Some(val) = line.trim().strip_prefix("api_key=") {
+                        if !val.trim().is_empty() { return Some(val.trim().to_string()); }
+                    }
+                }
+                None
+            })
+        })
 }
 
-// ── FETCH: read-only network proxy (agent cannot exfiltrate) ───────────────
+fn read_protocol_line<R: BufRead>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> io::Result<Option<String>> {
+    let mut line = String::new();
+    let bytes_read = reader
+        .take(max_bytes as u64 + 1)
+        .read_line(&mut line)?;
+    if bytes_read == 0 {
+        return Ok(None);
+    }
+    if bytes_read > max_bytes || !line.ends_with('\n') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "protocol line exceeds its limit or is incomplete",
+        ));
+    }
+    line.pop();
+    if line.ends_with('\r') {
+        line.pop();
+    }
+    Ok(Some(line))
+}
+
+// ── FETCH: explicitly allowlisted HTTPS retrieval ──────────────────────────
 
 fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
-    let mut url = String::new();
-    if reader.read_line(&mut url).is_err() {
-        let _ = writeln!(stream, "GATEWAY: protocol error");
+    let url = match read_protocol_line(reader, config::MAX_GATEWAY_URL_BYTES) {
+        Ok(Some(url)) => url,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid FETCH URL frame");
+            return;
+        }
+    };
+    let policy = match FetchPolicy::from_environment() {
+        Ok(policy) => policy,
+        Err(error) => {
+            let _ = writeln!(stream, "GATEWAY: {}", error);
+            return;
+        }
+    };
+    let validated = match policy.validate_url(&url) {
+        Ok(validated) => validated,
+        Err(error) => {
+            let _ = writeln!(stream, "GATEWAY: {}", error);
+            return;
+        }
+    };
+    if let Err(error) = policy.require_public_resolution(&validated) {
+        let _ = writeln!(stream, "GATEWAY: {}", error);
         return;
     }
-    let url = url.trim().to_string();
-    if url.is_empty() {
-        let _ = writeln!(stream, "GATEWAY: empty URL");
-        return;
-    }
-    // Defenses: HTTPS only, no localhost, strip query params
-    if !url.starts_with("https://") {
-        let _ = writeln!(stream, "GATEWAY: only HTTPS allowed (read-only)");
-        return;
-    }
-    if url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0") {
-        let _ = writeln!(stream, "GATEWAY: internal addresses blocked (SSRF)");
-        return;
-    }
-    // Strip query params to prevent data exfiltration via URL
-    let clean_url = if let Some(pos) = url.find('?') { &url[..pos] } else { &url };
-    // Max response size: 64KB (same as write cap)
+
     const MAX_FETCH_BYTES: usize = 64 * 1024;
-    match ureq::get(clean_url)
+    match ureq::get(&validated.url)
         .timeout(Duration::from_secs(10))
         .call()
     {
@@ -70,7 +113,9 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
             let mut buf = [0u8; 4096];
             let mut total = 0usize;
             while total < MAX_FETCH_BYTES {
-                match reader.read(&mut buf) {
+                let remaining = MAX_FETCH_BYTES - total;
+                let read_len = remaining.min(buf.len());
+                match reader.read(&mut buf[..read_len]) {
                     Ok(0) => break,
                     Ok(n) => {
                         body.extend_from_slice(&buf[..n]);
@@ -82,6 +127,7 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
             let tag = b"[EXTERNAL] ";
             let _ = stream.write_all(tag);
             let _ = stream.write_all(&body);
+            let _ = stream.write_all(b"\n");
         }
         Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
         Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
@@ -89,19 +135,31 @@ fn handle_fetch(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
 }
 
 fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
-    let mut sys = String::new();
-    let mut ctx = String::new();
-    if reader.read_line(&mut sys).is_err() || reader.read_line(&mut ctx).is_err() {
-        let _ = writeln!(stream, "GATEWAY: protocol error");
-        return;
-    }
+    let sys = match read_protocol_line(reader, config::MAX_GATEWAY_PROMPT_BYTES) {
+        Ok(Some(line)) => line,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid system prompt frame");
+            return;
+        }
+    };
+    let ctx = match read_protocol_line(reader, config::MAX_GATEWAY_PROMPT_BYTES) {
+        Ok(Some(line)) => line,
+        _ => {
+            let _ = writeln!(stream, "GATEWAY: invalid context frame");
+            return;
+        }
+    };
+    // Protocol escapes newlines as \n to keep single-line semantics
+    let sys = sys.replace("\\n", "\n");
+    let ctx = ctx.replace("\\n", "\n");
+    println!("[gateway] DEEPSEEK request received");
     let key = match load_api_key() {
-        Some(k) => k,
-        None => { let _ = writeln!(stream, "GATEWAY: no API key"); return; }
+        Some(k) => { println!("[gateway] key found"); k }
+        None => { let _ = writeln!(stream, "GATEWAY: no API key"); println!("[gateway] NO KEY"); return; }
     };
     // Simple JSON escape + API call
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
-    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, esc(sys.trim()), esc(ctx.trim()));
+    let body = format!(r#"{{"model":"deepseek-chat","messages":[{{"role":"system","content":"{}"}},{{"role":"user","content":"{}"}}],"temperature":0.7,"max_tokens":500,"stream":false}}"#, esc(&sys), esc(&ctx));
     match ureq::post("https://api.deepseek.com/v1/chat/completions")
         .set("Authorization", &format!("Bearer {}", key))
         .set("Content-Type", "application/json")
@@ -110,25 +168,46 @@ fn handle_deepseek(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
     {
         Ok(r) if r.status() == 200 => {
             let mut body = String::new();
-            if r.into_reader().read_to_string(&mut body).is_ok() {
+            let mut response = r
+                .into_reader()
+                .take(config::MAX_GATEWAY_MODEL_RESPONSE_BYTES + 1);
+            if response.read_to_string(&mut body).is_ok()
+                && body.len() as u64 <= config::MAX_GATEWAY_MODEL_RESPONSE_BYTES
+            {
                 if let Some(p) = body.find("\"content\":\"") {
                     let rest = &body[p+11..]; let mut i=0; let b=rest.as_bytes();
                     while i<b.len() { if b[i]==b'\\'&&i+1<b.len(){i+=2}else if b[i]==b'"'{break}else{i+=1} }
-                    let raw = &rest[..i].replace("\\n","\n").replace("\\\"","\"");
+                    let raw = &rest[..i].replace("\\\"","\"");
                     let _ = writeln!(stream, "{}", raw.trim());
                 }
+            } else {
+                let _ = writeln!(stream, "GATEWAY: model response exceeds limit");
             }
+            println!("[gateway] DEEPSEEK OK, response sent");
         }
-        Ok(r) => { let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status()); }
-        Err(e) => { let _ = writeln!(stream, "GATEWAY: {}", e); }
+        Ok(r) => {
+            let _ = writeln!(stream, "GATEWAY: HTTP {}", r.status());
+            println!("[gateway] DEEPSEEK HTTP {}", r.status());
+        }
+        Err(e) => {
+            let _ = writeln!(stream, "GATEWAY: {}", e);
+            println!("[gateway] DEEPSEEK error: {}", e);
+        }
     }
 }
 
 fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
-    let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_else(|_| "?".to_string());
+    let peer_address = stream.peer_addr().ok();
+    let peer = peer_address
+        .map(|address| address.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let trusted_local = peer_address
+        .map(|address| special_protocol_allowed(address.ip()))
+        .unwrap_or(false);
 
     // Set read timeout so a silent client can't hang the gateway
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(30)));
 
     // Clone the stream for reading so we can write to the original.
     let cloned = match stream.try_clone() {
@@ -143,18 +222,27 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
     };
     let mut reader = BufReader::new(cloned);
 
-    // Read first line
-    let mut line = String::new();
-    if reader.read_line(&mut line).is_err() {
-        return;
-    }
-    let line = line.trim().to_string();
+    let line = match read_protocol_line(&mut reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+        Ok(Some(line)) => line.trim().to_string(),
+        Ok(None) => return,
+        Err(_) => {
+            let _ = writeln!(stream, "GATEWAY: invalid command frame");
+            return;
+        }
+    };
     if line.is_empty() {
         return;
     }
 
     // Dispatch: AUTH, SESSION, or command
-    let (command_line, session_id) = parse_protocol(&mut reader, &mut stream, &line, token, &peer);
+    let (command_line, session_id) = parse_protocol(
+        &mut reader,
+        &mut stream,
+        &line,
+        token,
+        &peer,
+        trusted_local,
+    );
     let command_line = match command_line {
         Some(c) => c,
         None => return, // connection rejected or errored
@@ -168,12 +256,30 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
 
     // Special: DEEPSEEK — gateway proxied API call (has key access)
     if command_line == "DEEPSEEK" {
+        if !trusted_local {
+            let _ = writeln!(stream, "GATEWAY: DEEPSEEK is local-only");
+            log::log("boos-gateway", "special_protocol_denied", &[
+                ("peer", &peer),
+                ("protocol", "DEEPSEEK"),
+            ]);
+            return;
+        }
         handle_deepseek(&mut stream, &mut reader);
         return;
     }
 
-    // Special: FETCH — read-only network access (agent cannot write/exfiltrate)
+    // Special: FETCH — administrator-allowlisted external context retrieval.
+    // GET is not intrinsically read-only or non-exfiltrating, so remote peers
+    // cannot use this protocol and the destination policy defaults to deny.
     if command_line == "FETCH" {
+        if !trusted_local {
+            let _ = writeln!(stream, "GATEWAY: FETCH is local-only");
+            log::log("boos-gateway", "special_protocol_denied", &[
+                ("peer", &peer),
+                ("protocol", "FETCH"),
+            ]);
+            return;
+        }
         handle_fetch(&mut stream, &mut reader);
         return;
     }
@@ -189,10 +295,28 @@ fn handle_connection(mut stream: TcpStream, token: &Option<String>) {
         cmd.arg(arg);
     }
 
-    match cmd.output() {
+    match bounded_process::run_with_limits(
+        &mut cmd,
+        config::MAX_OUTPUT_BYTES,
+        Duration::from_secs(config::GATEWAY_CHILD_TIMEOUT_SECS),
+    ) {
         Ok(output) => {
             let _ = stream.write_all(&output.stdout);
             let _ = stream.write_all(&output.stderr);
+            if output.stdout_truncated || output.stderr_truncated {
+                let _ = writeln!(
+                    stream,
+                    "\nGATEWAY: output truncated at {} bytes per stream",
+                    config::MAX_OUTPUT_BYTES
+                );
+            }
+            if output.timed_out {
+                let _ = writeln!(
+                    stream,
+                    "\nGATEWAY: command terminated after {} seconds",
+                    config::GATEWAY_CHILD_TIMEOUT_SECS
+                );
+            }
         }
         Err(e) => {
             let _ = writeln!(stream, "Gateway error: {}", e);
@@ -208,27 +332,26 @@ fn parse_protocol(
     first_line: &str,
     token: &Option<String>,
     peer: &str,
+    trusted_local: bool,
 ) -> (Option<String>, Option<String>) {
     let mut line = first_line.to_string();
     let mut session_id: Option<String> = None;
-    let mut auth_done = token.is_none(); // skip auth if no token configured
+    let mut auth_done = token.is_none() || trusted_local;
 
     // Phase 1: handle AUTH and SESSION preamble lines
     loop {
         if !auth_done {
             if let Some(rest) = line.strip_prefix("AUTH ") {
-                if rest.trim() != token.as_ref().unwrap().as_str() {
+                if !tokens_equal(rest.trim(), token.as_ref().unwrap()) {
                     let _ = writeln!(stream, "AUTH FAILED");
                     log::log("boos-gateway", "auth_failed", &[("peer", peer)]);
                     return (None, None);
                 }
                 auth_done = true;
-                // Read next line
-                line.clear();
-                if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
-                    return (None, None);
-                }
-                line = line.trim().to_string();
+                line = match read_protocol_line(reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+                    Ok(Some(line)) if !line.trim().is_empty() => line.trim().to_string(),
+                    _ => return (None, None),
+                };
                 continue;
             } else {
                 let _ = writeln!(stream, "AUTH REQUIRED");
@@ -238,13 +361,16 @@ fn parse_protocol(
         }
 
         if let Some(rest) = line.strip_prefix("SESSION ") {
-            session_id = Some(rest.trim().to_string());
-            // Read next line
-            line.clear();
-            if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+            let candidate = rest.trim();
+            if validate_session_id(candidate).is_err() {
+                let _ = writeln!(stream, "GATEWAY: invalid SESSION ID");
                 return (None, None);
             }
-            line = line.trim().to_string();
+            session_id = Some(candidate.to_string());
+            line = match read_protocol_line(reader, config::MAX_GATEWAY_COMMAND_BYTES) {
+                Ok(Some(line)) if !line.trim().is_empty() => line.trim().to_string(),
+                _ => return (None, None),
+            };
             continue;
         }
 
@@ -255,25 +381,49 @@ fn parse_protocol(
     (Some(line), session_id)
 }
 
+fn tokens_equal(candidate: &str, expected: &str) -> bool {
+    if candidate.len() != expected.len() {
+        return false;
+    }
+    candidate
+        .bytes()
+        .zip(expected.bytes())
+        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+        == 0
+}
+
 pub fn main() {
+    // Log panics instead of silently dying
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.payload().downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "(non-string panic)".to_string());
+        let loc = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_else(|| "?".to_string());
+        log::log("boos-gateway", "panic", &[("msg", &msg), ("location", &loc)]);
+        eprintln!("PANIC at {}: {}", loc, msg);
+    }));
+
     let port = env::args()
         .nth(1)
         .and_then(|p| p.parse().ok())
         .unwrap_or(config::GATEWAY_DEFAULT_PORT);
 
     let token = get_auth_token();
+    let bind_ip = gateway_bind_ip(token.is_some());
 
-    let listener = match TcpListener::bind(("0.0.0.0", port)) {
+    let listener = match TcpListener::bind((bind_ip, port)) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind port {}: {}", port, e);
-            process::exit(1);
+            eprintln!("Failed to bind {}:{}: {}", bind_ip, port, e);
+            process::exit(config::EXIT_ERROR);
         }
     };
 
     let auth_msg = if token.is_some() { "auth enabled" } else { "auth disabled" };
     log::log("boos-gateway", "started", &[
         ("port", &port.to_string()),
+        ("bind", &bind_ip.to_string()),
         ("auth", auth_msg),
     ]);
 
@@ -298,7 +448,9 @@ pub fn main() {
                 let tok = Arc::clone(&token);
                 let counter = Arc::clone(&in_flight);
                 std::thread::spawn(move || {
-                    handle_connection(s, &tok);
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handle_connection(s, &tok);
+                    }));
                     counter.fetch_sub(1, Ordering::SeqCst);
                 });
             }
@@ -308,5 +460,35 @@ pub fn main() {
                 ]);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn protocol_line_reader_rejects_oversized_followup_lines() {
+        let mut input = Cursor::new("123456789\n");
+
+        assert!(read_protocol_line(&mut input, 8).is_err());
+    }
+
+    #[test]
+    fn protocol_line_reader_returns_a_complete_line_without_newline() {
+        let mut input = Cursor::new("SESSION agent-a\n");
+
+        assert_eq!(
+            read_protocol_line(&mut input, 32).unwrap().unwrap(),
+            "SESSION agent-a"
+        );
+    }
+
+    #[test]
+    fn token_comparison_checks_every_byte() {
+        assert!(tokens_equal("token-value", "token-value"));
+        assert!(!tokens_equal("token-valuE", "token-value"));
+        assert!(!tokens_equal("short", "token-value"));
     }
 }

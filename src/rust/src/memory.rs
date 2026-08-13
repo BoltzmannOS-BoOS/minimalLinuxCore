@@ -11,11 +11,11 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config;
 use crate::log;
+use crate::memory_namespace::MemoryNamespace;
 
 // ── Working memory ────────────────────────────────────────────────────────
 
@@ -40,8 +40,12 @@ impl WorkingMemory {
     }
 
     pub fn load() -> io::Result<Self> {
-        let path = working_path();
-        let kv = read_kv(&path)?;
+        let namespace = MemoryNamespace::from_environment()?;
+        Self::load_from(&namespace)
+    }
+
+    fn load_from(namespace: &MemoryNamespace) -> io::Result<Self> {
+        let kv = read_kv(&namespace.working_path())?;
 
         Ok(WorkingMemory {
             session_id: kv.get("session_id").cloned().unwrap_or_default(),
@@ -54,8 +58,16 @@ impl WorkingMemory {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        let dir = Path::new(config::MEMORY_DIR);
-        fs::create_dir_all(dir)?;
+        let namespace = MemoryNamespace::from_environment()?;
+        self.save_in(&namespace)
+    }
+
+    fn save_in(&self, namespace: &MemoryNamespace) -> io::Result<()> {
+        let dir = namespace.root();
+        fs::create_dir_all(dir).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_create_dir"), ("error", &e.to_string())]);
+            e
+        })?;
 
         let content = format!(
             "session_id={}\ngoals={}\ncontext={}\nactive_facts={}\nlast_updated={}\n",
@@ -66,9 +78,15 @@ impl WorkingMemory {
             self.last_updated,
         );
 
-        let tmp = dir.join("working.tmp");
-        fs::write(&tmp, &content)?;
-        fs::rename(&tmp, dir.join("working.kv"))?;
+        let tmp = namespace.working_temp_path(&self.session_id)?;
+        fs::write(&tmp, &content).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_write"), ("error", &e.to_string())]);
+            e
+        })?;
+        fs::rename(&tmp, namespace.working_path()).map_err(|e| {
+            log::log("boos-memory", "error", &[("op", "save_rename"), ("error", &e.to_string())]);
+            e
+        })?;
         Ok(())
     }
 
@@ -90,16 +108,14 @@ impl WorkingMemory {
             self.last_updated = now_secs();
         }
     }
-
-    #[allow(dead_code)]
-    pub fn clear_facts(&mut self) {
-        self.active_facts.clear();
-        self.last_updated = now_secs();
-    }
 }
 
-fn working_path() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("working.kv")
+fn log_namespace_error(operation: &str, error: &io::Error) {
+    log::log(
+        "boos-memory",
+        "error",
+        &[("op", operation), ("error", &error.to_string())],
+    );
 }
 
 // ── Recent memory ──────────────────────────────────────────────────────────
@@ -145,7 +161,18 @@ impl RecentEntry {
 
 /// Read all recent entries from disk, sorted by sequence number.
 pub fn recent_entries() -> Vec<RecentEntry> {
-    let dir = recent_dir();
+    let namespace = match MemoryNamespace::from_environment() {
+        Ok(namespace) => namespace,
+        Err(error) => {
+            log_namespace_error("recent_namespace", &error);
+            return Vec::new();
+        }
+    };
+    recent_entries_in(&namespace)
+}
+
+fn recent_entries_in(namespace: &MemoryNamespace) -> Vec<RecentEntry> {
+    let dir = namespace.recent_dir();
     let _ = fs::create_dir_all(&dir);
 
     let mut entries: Vec<(u32, RecentEntry)> = Vec::new();
@@ -168,31 +195,33 @@ pub fn recent_entries() -> Vec<RecentEntry> {
 
 /// Add an entry to recent memory (ring buffer).
 pub fn recent_add(entry: RecentEntry) -> io::Result<()> {
-    let dir = recent_dir();
-    fs::create_dir_all(&dir)?;
+    let namespace = MemoryNamespace::from_environment()?;
+    recent_add_in(&namespace, entry)
+}
 
-    // Find next sequence number
-    let mut max_seq = 0u32;
-    if let Ok(rd) = fs::read_dir(&dir) {
-        for e in rd.filter_map(|e| e.ok()) {
-            let name = e.file_name().to_string_lossy().to_string();
-            if let Some(seq) = name.trim_end_matches(".kv").parse::<u32>().ok() {
-                if seq > max_seq {
-                    max_seq = seq;
-                }
-            }
-        }
-    }
+fn recent_add_in(namespace: &MemoryNamespace, entry: RecentEntry) -> io::Result<()> {
+    let dir = namespace.recent_dir();
+    fs::create_dir_all(&dir).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "recent_create_dir"), ("error", &e.to_string())]);
+        e
+    })?;
 
-    let next_seq = if max_seq >= MAX_RECENT as u32 {
-        // Ring buffer: wrap around
-        1
-    } else {
-        max_seq + 1
-    };
+    // Ring buffer: use a counter file to track position.
+    // Reading max sequence from filenames is incorrect — after one wrap,
+    // max stays at MAX_RECENT and slot 1 is forever reused.
+    let counter_path = dir.join(".counter");
+    let seq: u32 = std::fs::read_to_string(&counter_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let next_seq = (seq % MAX_RECENT as u32) + 1;
+    let _ = std::fs::write(&counter_path, next_seq.to_string());
 
     let path = dir.join(format!("{}.kv", next_seq));
-    fs::write(&path, entry.to_kv())?;
+    fs::write(&path, entry.to_kv()).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "recent_write"), ("error", &e.to_string())]);
+        e
+    })?;
     Ok(())
 }
 
@@ -203,10 +232,6 @@ pub fn recent_search(query: &str) -> Vec<RecentEntry> {
         .filter(|e| e.content.to_lowercase().contains(&lower)
                   || e.entry_type.to_lowercase().contains(&lower))
         .collect()
-}
-
-fn recent_dir() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("recent")
 }
 
 // ── Archive memory ─────────────────────────────────────────────────────────
@@ -222,8 +247,12 @@ pub struct ArchiveEntry {
 
 /// Store a key-value pair in archive memory.
 pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::Result<()> {
-    let dir = archive_dir();
-    fs::create_dir_all(&dir)?;
+    let namespace = MemoryNamespace::from_environment()?;
+    let dir = namespace.archive_dir();
+    fs::create_dir_all(&dir).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_create_dir"), ("error", &e.to_string())]);
+        e
+    })?;
 
     let ts = now_secs();
     let safe_key = sanitize_filename(key);
@@ -233,7 +262,10 @@ pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::
         "key={}\nvalue={}\ncreated_at={}\nsession_id={}\ntags={}\n",
         key, sanitize_value(value), ts, session_id, tags
     );
-    fs::write(&path, content)?;
+    fs::write(&path, content).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_write"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
+        e
+    })?;
 
     log::log("boos-memory", "archive_set", &[
         ("key", &log::json_escape(key)),
@@ -242,26 +274,16 @@ pub fn archive_set(key: &str, value: &str, session_id: &str, tags: &str) -> io::
     Ok(())
 }
 
-/// Get a value from archive memory by key.
-#[allow(dead_code)]
-pub fn archive_get(key: &str) -> Option<ArchiveEntry> {
-    let safe_key = sanitize_filename(key);
-    let path = archive_dir().join(format!("{}.mem", safe_key));
-    let data = fs::read_to_string(&path).ok()?;
-    let kv = parse_kv_string(&data);
-
-    Some(ArchiveEntry {
-        key: kv.get("key")?.clone(),
-        value: kv.get("value")?.clone(),
-        created_at: kv.get("created_at").and_then(|s| s.parse().ok()).unwrap_or(0),
-        session_id: kv.get("session_id").cloned().unwrap_or_default(),
-        tags: kv.get("tags").cloned().unwrap_or_default(),
-    })
-}
-
 /// Search archive memory. Returns entries where query matches key, value, or tags.
 pub fn archive_search(query: &str) -> Vec<ArchiveEntry> {
-    let dir = archive_dir();
+    let namespace = match MemoryNamespace::from_environment() {
+        Ok(namespace) => namespace,
+        Err(error) => {
+            log_namespace_error("archive_namespace", &error);
+            return Vec::new();
+        }
+    };
+    let dir = namespace.archive_dir();
     let _ = fs::create_dir_all(&dir);
 
     let mut results = Vec::new();
@@ -296,16 +318,16 @@ pub fn archive_search(query: &str) -> Vec<ArchiveEntry> {
 /// Delete an archive entry by key.
 pub fn archive_delete(key: &str) -> io::Result<()> {
     let safe_key = sanitize_filename(key);
-    let path = archive_dir().join(format!("{}.mem", safe_key));
-    fs::remove_file(&path)?;
+    let namespace = MemoryNamespace::from_environment()?;
+    let path = namespace.archive_dir().join(format!("{}.mem", safe_key));
+    fs::remove_file(&path).map_err(|e| {
+        log::log("boos-memory", "error", &[("op", "archive_delete"), ("key", &log::json_escape(key)), ("error", &e.to_string())]);
+        e
+    })?;
     log::log("boos-memory", "archive_delete", &[
         ("key", &log::json_escape(key)),
     ]);
     Ok(())
-}
-
-fn archive_dir() -> PathBuf {
-    Path::new(config::MEMORY_DIR).join("archive")
 }
 
 // ── Session management ─────────────────────────────────────────────────────
@@ -487,6 +509,31 @@ mod tests {
     }
 
     #[test]
+    fn test_agent_working_memory_round_trip_stays_in_agent_namespace() {
+        let dir = std::env::temp_dir().join(format!(
+            "boos-agent-memory-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let namespace = MemoryNamespace::new(&dir, Some("agent-a")).unwrap();
+        let mut original = WorkingMemory::new("session-a".into());
+        original.add_fact("isolated fact");
+
+        original.save_in(&namespace).unwrap();
+        let restored = WorkingMemory::load_from(&namespace).unwrap();
+
+        assert_eq!(restored.session_id, "session-a");
+        assert_eq!(restored.active_facts, vec!["isolated fact"]);
+        assert!(
+            !dir.join("working.kv").exists(),
+            "an agent-specific save must not write shared working memory"
+        );
+        assert!(namespace.working_path().exists());
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn test_join_split_list() {
         let items = vec!["a".into(), "b".into(), "c".into()];
         let joined = join_list(&items);
@@ -550,5 +597,57 @@ mod tests {
         assert_eq!(sanitize_filename("a\0b"), "a_b");
         assert_eq!(sanitize_filename("a|b"), "a_b");
         assert_eq!(sanitize_filename("normal"), "normal");
+    }
+
+    #[test]
+    fn test_persist_roundtrip_atomic() {
+        let dir = std::env::temp_dir().join("boos-test-persist");
+        let _ = fs::create_dir_all(&dir);
+        // Simulate crash: write partial data, verify clean state survives
+        let tmp = dir.join("working.tmp");
+        let real = dir.join("working.kv");
+
+        // Write via temp+rename (atomic pattern)
+        let content = "session_id=crash-test\ngoals=a|b\ncontext=k1::v1\nactive_facts=fact1\nlast_updated=42\n";
+        fs::write(&tmp, content).unwrap();
+        fs::rename(&tmp, &real).unwrap();
+
+        // Read back — data must be intact
+        let kv = read_kv(&real).unwrap();
+        assert_eq!(kv.get("session_id").unwrap(), "crash-test");
+        assert_eq!(kv.get("goals").unwrap(), "a|b");
+        assert_eq!(kv.get("last_updated").unwrap(), "42");
+
+        // Simulate partial write (crash mid-write) — temp file should exist
+        // but real file should have previous state, not partial state
+        let prev = fs::read_to_string(&real).unwrap();
+        fs::write(&tmp, "session_id=partial\nCORRUPT").unwrap();
+        // Crash before rename: real file unchanged
+        assert_eq!(fs::read_to_string(&real).unwrap(), prev);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_ring_buffer_counter_increments() {
+        let root = std::env::temp_dir().join(format!(
+            "boos-recent-memory-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let namespace = MemoryNamespace::new(&root, Some("ring-agent")).unwrap();
+
+        for i in 0..10 {
+            let entry = RecentEntry::new("test", &format!("entry-{}", i), "ring-test");
+            recent_add_in(&namespace, entry).unwrap();
+        }
+        let all = recent_entries_in(&namespace);
+        let contents: Vec<&str> = all.iter().map(|entry| entry.content.as_str()).collect();
+
+        assert_eq!(all.len(), 10);
+        assert!(contents.contains(&"entry-0"), "entry-0 missing");
+        assert!(contents.contains(&"entry-9"), "entry-9 missing");
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

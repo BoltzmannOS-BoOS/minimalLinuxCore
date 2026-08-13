@@ -1,0 +1,4 @@
+You are operating BoOS through its existing command interface.
+Start with help, status, and caps. Complete every task in tasks.kv.
+Do not assume a capability exists or is enabled without observing evidence.
+Record each environment command, observation, conclusion, and verification.

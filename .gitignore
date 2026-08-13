@@ -18,3 +18,4 @@ graphify-out/20*/
 graphify-out/.graphify_*
 .boos-ds-key
 rootfs/bin/boos
+.worktrees/

@@ -1,0 +1,93 @@
+Completed all five tasks using seven BoOS interactions.
+
+```json
+{
+  "schema": "boos.world.v1",
+  "system": {
+    "id": "system:boos",
+    "state": "ready"
+  },
+  "capabilities": {
+    "total": 39,
+    "enabled": [
+      "audit",
+      "auto-attack",
+      "caps",
+      "commands",
+      "context-get",
+      "context-set",
+      "daemons",
+      "debug",
+      "exec",
+      "forget",
+      "health-check",
+      "help",
+      "identity",
+      "list-dir",
+      "log",
+      "observe",
+      "poweroff",
+      "proc-list",
+      "process",
+      "prune",
+      "read-file",
+      "recall",
+      "remember",
+      "result",
+      "results",
+      "rotate-logs",
+      "self-state",
+      "session-end",
+      "session-goal",
+      "session-start",
+      "session-status",
+      "shell",
+      "stat",
+      "status",
+      "submit",
+      "world",
+      "write-file"
+    ],
+    "disabled": [
+      "mock-ai",
+      "reset"
+    ]
+  },
+  "read_file": {
+    "capability": "read-file",
+    "required_parameters": ["path"],
+    "optional_parameters": []
+  },
+  "allowed_system_program_execution": {
+    "capability": "exec",
+    "required_parameters": ["binary"],
+    "optional_parameters": ["args"]
+  },
+  "disabled_capability_invocation": {
+    "currently_invocable_through_semantic_interface": false,
+    "evidence": "Both disabled objects expose inspect but no invoke affordance."
+  }
+}
+```
+
+Task conclusions:
+
+1. There are 37 enabled and 2 disabled capabilities, enumerated in the JSON map.
+2. Reading a file requires exactly one observed parameter: `path`.
+3. `exec` executes a system binary; `binary` is required and `args` is optional.
+4. A disabled capability cannot currently be invoked through the observed semantic interface. Both `mock-ai` and `reset` have only `affordance.0=inspect`; neither exposes `invoke`.
+5. The JSON above is the compact machine-readable capability map.
+
+Command trace:
+
+| # | BoOS command | Observation and verification |
+|---|---|---|
+| 1 | `world schema` | Returned `schema=boos.world.v1`, supported kinds `capability` and `system`, plus record and escaping rules. |
+| 2 | `world list` | Returned 39 capability records and `system:boos`; 37 records had `state=enabled`, while `mock-ai` and `reset` had `state=disabled`. |
+| 3 | `world show capability:read-file` | Verified `state=enabled`, `attribute.parameter.000=path:required`, and `affordance.1=invoke`. |
+| 4 | `world show capability:exec` | Verified summary `execute a system binary`, required `binary`, optional `args`, and the `invoke` affordance. |
+| 5 | `world show capability:mock-ai` | Verified `state=disabled` and only `affordance.0=inspect`. |
+| 6 | `world show capability:reset` | Verified `state=disabled` and only `affordance.0=inspect`. |
+| 7 | `world show system:boos` | Verified the system is `ready`, uses semantic ABI `boos.world.v1`, and relates to capability indices `000`–`038`—39 total. |
+
+No disabled capability was invoked; the invocation conclusion is based strictly on the observed state and affordances.

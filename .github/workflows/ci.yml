@@ -1,0 +1,109 @@
+name: BoOS CI
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boos-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Test
+        working-directory: src/rust
+        run: cargo test --locked --all-targets
+      - name: Release build
+        working-directory: src/rust
+        run: cargo build --locked --release
+
+  boot:
+    runs-on: ubuntu-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-musl
+
+      - name: Install boot test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cpio e2fsprogs musl-tools qemu-system-x86
+
+      - name: Build static BoOS binary
+        working-directory: src/rust
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+
+      - name: Assemble traceable initramfs from repository rootfs
+        run: |
+          mkdir -p build
+          source_date_epoch=$(git show -s --format=%ct "$GITHUB_SHA")
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            alpine:3.21 sh -euc '
+              apk add --no-cache coreutils cpio findutils linux-virt
+              cp /boot/vmlinuz-virt build/vmlinuz
+              scripts/assemble-initramfs.sh \
+                /boot/initramfs-virt \
+                rootfs \
+                src/rust/target/x86_64-unknown-linux-musl/release/boos \
+                build/initramfs.cpio.gz \
+                "$1" \
+                "$2"
+            ' sh "$GITHUB_SHA" "$source_date_epoch"
+
+      - name: Verify initramfs provenance
+        run: |
+          tests/boot/verify-initramfs.sh \
+            build/initramfs.cpio.gz \
+            rootfs/init \
+            src/rust/target/x86_64-unknown-linux-musl/release/boos \
+            "$GITHUB_SHA"
+
+      - name: Create authenticated boot-test initramfs
+        run: |
+          mkdir -p build/ci-rootfs
+          gzip -dc build/initramfs.cpio.gz |
+            (cd build/ci-rootfs && cpio --extract --make-directories --quiet)
+          openssl rand -hex 32 > build/ci-gateway-token
+          install -m 600 \
+            build/ci-gateway-token \
+            build/ci-rootfs/etc/boos/gateway_token
+          (
+            cd build/ci-rootfs
+            find . -print0 |
+              sort -z |
+              cpio --null --format=newc --create --quiet
+          ) | gzip -n > build/ci-initramfs.cpio.gz
+
+      - name: Create disposable persistent disk
+        run: |
+          truncate --size 64M build/var.img
+          mkfs.ext2 -F build/var.img
+
+      - name: Boot real init and exercise gateway
+        run: scripts/ci-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: boos-qemu-failure-${{ github.sha }}
+          path: build/ci-qemu.log
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boos-x86_64-${{ github.sha }}
+          path: |
+            build/vmlinuz
+            build/initramfs.cpio.gz
+          if-no-files-found: error

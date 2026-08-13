@@ -336,7 +336,7 @@ command registry → capability check → execution
 - `submit {"command": "status"}` worked — AI used the request pipeline (submit → daemon → results)
 - AI correctly understood the capability system and identified which commands are allowed/blocked
 - TCP gateway handles rapid-fire connections reliably using `nc -ll`
-- `ai-client.py` uses only Python stdlib (no external dependencies)
+- `ai-client.py` depends on `openai` library (not Python stdlib-only)
 - AI noted that `shell`, `poweroff`, `reboot` are locked down — as intended
 
 **Note:** The 9p shared directory alternative is not available due to kernel lacking 9p filesystem support. TCP is the primary transport. virtio-net replaces e1000 (driver not in kernel).

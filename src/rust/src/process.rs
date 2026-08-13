@@ -1,13 +1,15 @@
 use std::fs;
-use std::io::{self, Read};
-use std::os::unix::process::ExitStatusExt as _;
+use std::io;
 use std::path::Path;
 use std::process;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::bounded_process;
 use crate::config;
 use crate::log;
-use crate::registry;
+use crate::queue_lock::QueueProcessorLock;
+use crate::queue_record;
+use crate::request_publish::encode_kv_value;
 
 /// Execute a command and capture its output, enforcing MAX_OUTPUT_BYTES limit.
 /// Returns (stdout, exit_code, was_truncated).
@@ -15,63 +17,32 @@ use crate::registry;
 /// Reads stdout and stderr concurrently via threads to avoid pipe-buffer deadlock:
 /// if the child fills stderr before stdout, sequential read would block forever.
 fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
-    let mut child = match process::Command::new(cmd)
-        .args(args)
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => return (format!("Failed to spawn: {}", e), 1, false),
+    let mut command = process::Command::new(cmd);
+    command.args(args);
+    let captured = match bounded_process::run_with_limits(
+        &mut command,
+        config::MAX_OUTPUT_BYTES,
+        Duration::from_secs(config::QUEUE_CHILD_TIMEOUT_SECS),
+    ) {
+        Ok(captured) => captured,
+        Err(error) => {
+            return (
+                format!("Failed to execute child process: {}", error),
+                config::EXIT_ERROR,
+                false,
+            );
+        }
+    };
+    let truncated = captured.stdout_truncated || captured.stderr_truncated;
+    let exit_code = if captured.timed_out {
+        config::EXIT_ERROR
+    } else {
+        captured.status.code().unwrap_or(config::EXIT_ERROR)
     };
 
-    // Take ownership of pipes for thread-based concurrent reads
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-
-    let limit = config::MAX_OUTPUT_BYTES;
-
-    // Read stdout in a thread
-    let stdout_handle = std::thread::spawn(move || {
-        let mut buf = Vec::with_capacity(65536);
-        let mut truncated = false;
-        if let Some(pipe) = stdout_pipe {
-            let _ = pipe.take(limit as u64 + 1).read_to_end(&mut buf);
-            if buf.len() > limit {
-                truncated = true;
-                buf.truncate(limit);
-            }
-        }
-        (buf, truncated)
-    });
-
-    // Read stderr in a thread
-    let stderr_handle = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let mut truncated = false;
-        if let Some(pipe) = stderr_pipe {
-            let _ = pipe.take(limit as u64 + 1).read_to_end(&mut buf);
-            if buf.len() > limit {
-                truncated = true;
-                buf.truncate(limit);
-            }
-        }
-        (buf, truncated)
-    });
-
-    let (stdout_buf, stdout_trunc) = stdout_handle.join().unwrap_or((Vec::new(), false));
-    let (stderr_buf, stderr_trunc) = stderr_handle.join().unwrap_or((Vec::new(), false));
-    let truncated = stdout_trunc || stderr_trunc;
-
-    // Wait for child after pipes are drained
-    let status = child.wait().unwrap_or_else(|_| {
-        process::ExitStatus::from_raw(0x0100) // exit code 1 in raw wait status
-    });
-    let exit_code = status.code().unwrap_or(1);
-
     // Combine stdout and stderr
-    let mut output = String::from_utf8_lossy(&stdout_buf).to_string();
-    let err_out = String::from_utf8_lossy(&stderr_buf);
+    let mut output = String::from_utf8_lossy(&captured.stdout).to_string();
+    let err_out = String::from_utf8_lossy(&captured.stderr);
     if !err_out.is_empty() {
         if !output.is_empty() {
             output.push('\n');
@@ -80,7 +51,16 @@ fn capture_output(cmd: &str, args: &[&str]) -> (String, i32, bool) {
     }
 
     if truncated {
-        output.push_str(&format!("\n[truncated {}+ bytes]", limit));
+        output.push_str(&format!(
+            "\n[stdout or stderr truncated at {} bytes]",
+            config::MAX_OUTPUT_BYTES
+        ));
+    }
+    if captured.timed_out {
+        output.push_str(&format!(
+            "\n[terminated after {} seconds]",
+            config::QUEUE_CHILD_TIMEOUT_SECS
+        ));
     }
 
     (output, exit_code, truncated)
@@ -130,9 +110,30 @@ fn walk_dir(dir: &Path, result: &mut Vec<String>, since: f64, depth: u32) -> io:
 }
 
 pub fn main() {
-    // Ensure directories exist
-    let _ = fs::create_dir_all(config::REQ_DIR);
-    let _ = fs::create_dir_all(config::RESULT_DIR);
+    for directory in [config::REQ_DIR, config::RESULT_DIR] {
+        if let Err(error) = fs::create_dir_all(directory) {
+            eprintln!("Cannot prepare queue directory {}: {}", directory, error);
+            return;
+        }
+    }
+
+    let lock_path = Path::new(config::REQ_DIR).join(".processor.lock");
+    let _queue_lock = match QueueProcessorLock::acquire(&lock_path) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            println!("Queue processor already active.");
+            return;
+        }
+        Err(error) => {
+            eprintln!("Cannot lock request queue: {}", error);
+            log::log(
+                "boos-process",
+                "queue_lock_error",
+                &[("error", &error.to_string())],
+            );
+            return;
+        }
+    };
 
     let trace = log::get_trace_level();
     let mut processed = 0u32;
@@ -153,31 +154,64 @@ pub fn main() {
 
     for entry in entries {
         let path = entry.path();
-        let _content = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => {
-                let _ = fs::remove_file(&path);
+        let request = match queue_record::load_request(&path) {
+            Ok(request) => request,
+            Err(error) => {
+                log::log(
+                    "boos-process",
+                    "invalid_request",
+                    &[
+                        ("file", &entry.file_name().to_string_lossy()),
+                        ("error", &error.to_string()),
+                    ],
+                );
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput
+                ) {
+                    if let Err(remove_error) = fs::remove_file(&path) {
+                        log::log(
+                            "boos-process",
+                            "request_remove_error",
+                            &[("error", &remove_error.to_string())],
+                        );
+                    }
+                }
                 continue;
             }
         };
+        let id = request.id.as_str();
+        let cmd = request.command.as_str();
+        let args = request.args.as_str();
+        let requester = request.requester.as_str();
+        let session_id = request.session_id.as_deref();
 
-        let kv = registry::parse_kv_file(&path);
-        let id = kv.get("id").cloned().unwrap_or_else(|| {
-            entry.file_name().to_string_lossy().to_string()
-        });
-        let cmd = match kv.get("command").cloned() {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                log::log("boos-process", "invalid_request", &[
-                    ("file", &entry.file_name().to_string_lossy())
-                ]);
-                let _ = fs::remove_file(&path);
+        match queue_record::existing_result(Path::new(config::RESULT_DIR), id) {
+            Ok(true) => {
+                log::log(
+                    "boos-process",
+                    "request_result_already_exists",
+                    &[("id", id)],
+                );
+                if let Err(error) = fs::remove_file(&path) {
+                    log::log(
+                        "boos-process",
+                        "request_remove_error",
+                        &[("id", id), ("error", &error.to_string())],
+                    );
+                }
                 continue;
             }
-        };
-        let args = kv.get("args").map(|s| s.as_str()).unwrap_or("");
-        let requester = kv.get("requester").map(|s| s.as_str()).unwrap_or("unknown");
-        let session_id = kv.get("session_id").map(|s| s.as_str());
+            Ok(false) => {}
+            Err(error) => {
+                log::log(
+                    "boos-process",
+                    "result_preflight_error",
+                    &[("id", id), ("error", &error.to_string())],
+                );
+                continue;
+            }
+        }
 
         let started_at = log::uptime_secs();
         let prev_cmd = fs::read_to_string(config::LAST_CMD_FILE).unwrap_or_default();
@@ -212,21 +246,12 @@ pub fn main() {
             ));
         }
 
-        // Build full command: cmd + args (space-separated for boos-exec)
-        let full_cmd = if args.is_empty() {
-            cmd.clone()
-        } else {
-            format!("{} {}", cmd, args)
-        };
-        let cmd_parts: Vec<&str> = full_cmd.split_whitespace().collect();
-        let exec_cmd = cmd_parts.first().map(|s| *s).unwrap_or("help");
-        let exec_args = &cmd_parts[1..];
-
-        let (output, exit_code, _truncated) = capture_output("/bin/boos-exec", &{
-            let mut v = vec![exec_cmd];
-            v.extend_from_slice(exec_args);
-            v
-        });
+        // Pass cmd as first arg, remaining args split by whitespace.
+        // Avoids: format!("{} {}", cmd, args) → split_whitespace (Bug: destroys
+        // spacing if args were originally multi-word).
+        let mut exec_vec = vec![cmd];
+        exec_vec.extend(args.split_whitespace());
+        let (output, exit_code, _truncated) = capture_output("/bin/boos-exec", &exec_vec);
 
         let finished_at = log::uptime_secs();
         let duration = log::duration_ms(started_at, finished_at);
@@ -258,33 +283,57 @@ pub fn main() {
         let last = format!("{} {}", cmd, args);
         let _ = fs::write(config::LAST_CMD_FILE, last.trim());
 
-        // Write result file (atomic)
-        let result_path = Path::new(config::RESULT_DIR).join(format!("{}.out", id));
-        let tmp_path = Path::new(config::RESULT_DIR).join(format!("{}.tmp", id));
-
         let mut result_content = format!(
             "id={}\nrequester={}\ncommand={}\nargs={}\nverdict={}\nexit_code={}\nstarted_at={:.3}\nfinished_at={:.3}\nduration_ms={}\n",
-            id, requester, cmd, args, verdict, exit_code, started_at, finished_at, duration
+            encode_kv_value(id),
+            encode_kv_value(requester),
+            encode_kv_value(cmd),
+            encode_kv_value(args),
+            verdict,
+            exit_code,
+            started_at,
+            finished_at,
+            duration
         );
 
         if let Some(sid) = session_id {
-            result_content.push_str(&format!("session_id={}\n", sid));
+            result_content.push_str(&format!(
+                "session_id={}\n",
+                encode_kv_value(sid)
+            ));
         }
 
         if !prev_cmd.is_empty() {
-            result_content.push_str(&format!("prev_command={}\n", prev_cmd));
+            result_content.push_str(&format!(
+                "prev_command={}\n",
+                encode_kv_value(prev_cmd)
+            ));
         }
         if !files_touched.is_empty() {
-            result_content.push_str(&format!("files_touched={}\n", files_touched));
+            result_content.push_str(&format!(
+                "files_touched={}\n",
+                encode_kv_value(&files_touched)
+            ));
         }
 
         result_content.push_str("---\n");
         result_content.push_str(&output);
         result_content.push('\n');
 
-        // Atomic write
-        let _ = fs::write(&tmp_path, &result_content);
-        let _ = fs::rename(&tmp_path, &result_path);
+        if let Err(error) = queue_record::publish_result(
+            Path::new(config::RESULT_DIR),
+            id,
+            result_content.as_bytes(),
+        ) {
+            log::log(
+                "boos-process",
+                "result_publish_error",
+                &[("id", id), ("error", &error.to_string())],
+            );
+            eprintln!("Cannot publish result for {}: {}", id, error);
+            processed += 1;
+            continue;
+        }
 
         // Log completion
         if trace == log::TraceLevel::Verbose {
@@ -303,8 +352,16 @@ pub fn main() {
         println!("[{}] {} ({}ms)", id, verdict, duration);
         println!("{}", output);
 
-        // Remove request file
-        let _ = fs::remove_file(&path);
+        // A durable result is the completion marker. If request deletion
+        // fails, the next processor observes that marker and only retries the
+        // cleanup instead of executing the command again.
+        if let Err(error) = fs::remove_file(&path) {
+            log::log(
+                "boos-process",
+                "request_remove_error",
+                &[("id", id), ("error", &error.to_string())],
+            );
+        }
         processed += 1;
     }
 

@@ -1,0 +1,5 @@
+You are operating BoOS through its semantic object interface.
+Start with world schema and world list. Complete every task in tasks.kv.
+Use world show for exact objects. Do not assume a capability exists or is
+enabled without observing evidence. Record each environment command,
+observation, conclusion, and verification.

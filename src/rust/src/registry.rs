@@ -39,15 +39,9 @@ pub fn parse_kv_file(path: &Path) -> HashMap<String, String> {
     map
 }
 
-/// Load all commands from the registry directory.
-pub fn load_commands() -> Vec<Command> {
+fn load_commands_from_dir(dir: &Path) -> std::io::Result<Vec<Command>> {
     let mut commands = Vec::new();
-    let dir = Path::new(config::CMD_DIR);
-
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return commands,
-    };
+    let entries = fs::read_dir(dir)?;
 
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
@@ -83,7 +77,20 @@ pub fn load_commands() -> Vec<Command> {
         }
     }
     commands.sort_by(|a, b| a.name.cmp(&b.name));
-    commands
+    Ok(commands)
+}
+
+pub fn try_load_commands() -> std::io::Result<Vec<Command>> {
+    load_commands_from_dir(Path::new(config::CMD_DIR))
+}
+
+/// Load all commands from the registry directory.
+///
+/// Existing callers treat an unavailable registry as an empty command list.
+/// The semantic world projection uses `try_load_commands` when it must
+/// distinguish those states.
+pub fn load_commands() -> Vec<Command> {
+    try_load_commands().unwrap_or_default()
 }
 
 /// Parse a params string like "id:required" or "level:optional"
@@ -240,5 +247,12 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(enable_flag, "allow_old");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_commands_from_missing_directory_reports_error() {
+        let missing = std::env::temp_dir().join("boos-test-missing-command-dir");
+        let _ = std::fs::remove_dir_all(&missing);
+        assert!(load_commands_from_dir(&missing).is_err());
     }
 }

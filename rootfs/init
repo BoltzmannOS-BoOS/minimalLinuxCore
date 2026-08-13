@@ -1,27 +1,57 @@
 #!/bin/sh
 
-mkdir -p /proc /sys /dev /tmp
+mkdir -p /proc /sys /dev /tmp /var
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+/bin/busybox chmod 1777 /tmp
+
+load_kernel_module() {
+    module_name=$1
+    if [ -x /sbin/modprobe ] && /sbin/modprobe "$module_name"; then
+        return
+    fi
+    if /bin/busybox modprobe "$module_name"; then
+        return
+    fi
+    echo "[init] fatal: unable to load kernel module $module_name"
+    exit 1
+}
+
+# These modules come from the same Alpine package as the CI/runtime kernel.
+# Loading them after proc/sys/dev are mounted keeps module discovery coherent.
+load_kernel_module virtio_blk
+load_kernel_module ext4
+load_kernel_module virtio_net
+
+ifconfig lo up
 
 echo "[init] mounting persistent /var..."
-if mount -t ext2 /dev/vda /var 2>/dev/null; then
+if mount -t ext4 /dev/vda /var || mount -t ext2 /dev/vda /var; then
     echo "[init] persistent /var mounted"
     mkdir -p /var/boos/requests /var/boos/results /var/log
-    sync
+    /bin/busybox sync
 else
     echo "[init] no persistent disk, using tmpfs"
     mkdir -p /var/boos/requests /var/boos/results /var/log
 fi
 
-echo "[init] network: e1000 only (no modules needed)"
-ifconfig eth0 up 2>/dev/null && udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
+echo "[init] network: configuring virtio interface"
+ifconfig eth0 up
+udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
 IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+if [ -z "$IP" ]; then
+    echo "[init] DHCP failed; applying QEMU user-network fallback"
+    ifconfig eth0 10.0.2.15 netmask 255.255.255.0
+    /bin/busybox route add default gw 10.0.2.2
+    echo "nameserver 10.0.2.3" > /etc/resolv.conf
+    IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+fi
 if [ -n "$IP" ]; then
     echo "[init] network up: eth0=$IP"
 else
-    echo "[init] network: guest DHCP failed (host port forward still works)"
+    echo "[init] fatal: network configuration failed"
+    exit 1
 fi
 
 echo "================================================"
@@ -29,14 +59,34 @@ echo " minimalLinuxCore booted"
 echo " BoOS substrate v0"
 echo "================================================"
 
-echo "[init] creating system users..."
-adduser -D -s /bin/sh boos-gateway 2>/dev/null || true
-adduser -D -s /bin/sh boos-agent 2>/dev/null || true
+echo "[init] validating system identities..."
+if ! /bin/busybox grep -q '^boos-gateway:' /etc/passwd ||
+   ! /bin/busybox grep -q '^boos-agent:' /etc/passwd; then
+    echo "[init] fatal: required BoOS identities are missing"
+    exit 1
+fi
+
+# The supervisor deliberately drops gateway privileges through BusyBox su.
+# Expose only that required applet instead of relying on the base initramfs.
+/bin/busybox ln -sf busybox /bin/su
+
+mkdir -p /var/boos/memory /var/boos/daemons
+: > /var/boos/last-cmd
+: > /var/log/boos.log
+/bin/busybox chown -R boos-gateway:boos-gateway /var/boos/requests /var/boos/memory
+/bin/busybox chown boos-gateway:boos-gateway /var/boos/last-cmd /var/log/boos.log
+/bin/busybox chmod 750 /var/boos/requests /var/boos/memory
+/bin/busybox chmod 640 /var/boos/last-cmd /var/log/boos.log
 
 if [ -f /etc/boos/agent.conf ]; then
-    chown boos-gateway:boos-gateway /etc/boos/agent.conf 2>/dev/null || true
-    chmod 400 /etc/boos/agent.conf 2>/dev/null || true
+    /bin/busybox chown boos-gateway:boos-gateway /etc/boos/agent.conf
+    /bin/busybox chmod 400 /etc/boos/agent.conf
     echo "[init] agent.conf protected (owner: boos-gateway, mode: 400)"
+fi
+if [ -f /etc/boos/gateway_token ]; then
+    /bin/busybox chown boos-gateway:boos-gateway /etc/boos/gateway_token
+    /bin/busybox chmod 400 /etc/boos/gateway_token
+    echo "[init] gateway token protected (owner: boos-gateway, mode: 400)"
 fi
 
 echo "[init] starting boos-supervisor..."
