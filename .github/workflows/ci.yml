@@ -67,6 +67,7 @@ jobs:
             build/initramfs.cpio.gz \
             rootfs/init \
             src/rust/target/x86_64-unknown-linux-musl/release/boos \
+            build/vmlinuz \
             "$GITHUB_SHA"
 
       - name: Create authenticated boot-test initramfs
@@ -78,6 +79,11 @@ jobs:
           install -m 600 \
             build/ci-gateway-token \
             build/ci-rootfs/etc/boos/gateway_token
+          gateway_daemon=build/ci-rootfs/etc/boos/daemons/gateway.daemon
+          grep -Fqx 'principal=debug' "$gateway_daemon"
+          grep -Fqx 'enabled=0' "$gateway_daemon"
+          sed -i 's/^enabled=0$/enabled=1/' "$gateway_daemon"
+          grep -Fqx 'enabled=1' "$gateway_daemon"
           (
             cd build/ci-rootfs
             find . -print0 |
@@ -97,7 +103,9 @@ jobs:
         if: failure()
         with:
           name: boos-qemu-failure-${{ github.sha }}
-          path: build/ci-qemu.log
+          path: |
+            build/ci-offline-qemu.log
+            build/ci-qemu.log
           if-no-files-found: warn
 
       - uses: actions/upload-artifact@v4

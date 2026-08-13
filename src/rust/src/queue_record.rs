@@ -5,6 +5,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::config;
+use crate::principal::PrincipalId;
 use crate::request_publish::validate_request_id;
 
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
@@ -17,10 +18,24 @@ const SAFE_READ_FLAGS: i32 = 0;
 
 pub struct QueuedRequest {
     pub id: String,
-    pub requester: String,
+    pub claimed_requester: Option<String>,
     pub command: String,
     pub args: String,
     pub session_id: Option<String>,
+}
+
+pub struct OwnedQueuedRequest {
+    pub principal: PrincipalId,
+    pub request: QueuedRequest,
+}
+
+impl QueuedRequest {
+    pub fn with_principal(self, principal: PrincipalId) -> OwnedQueuedRequest {
+        OwnedQueuedRequest {
+            principal,
+            request: self,
+        }
+    }
 }
 
 pub fn load_request(path: &Path) -> io::Result<QueuedRequest> {
@@ -74,10 +89,7 @@ pub fn load_request(path: &Path) -> io::Result<QueuedRequest> {
 
     Ok(QueuedRequest {
         id: id.to_string(),
-        requester: fields
-            .get("requester")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string()),
+        claimed_requester: fields.get("requester").cloned(),
         command: command.to_string(),
         args: fields.get("args").cloned().unwrap_or_default(),
         session_id,
@@ -248,7 +260,7 @@ fn create_temporary_result(
         match OpenOptions::new()
             .write(true)
             .create_new(true)
-            .mode(0o600)
+            .mode(0o640)
             .open(&path)
         {
             Ok(file) => return Ok((path, file)),
@@ -349,6 +361,25 @@ mod tests {
     }
 
     #[test]
+    fn published_result_is_readable_by_the_principal_group() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = temporary_directory("result-mode");
+        let path = publish_result(
+            &directory,
+            "req-readable",
+            b"id=req-readable\nexit_code=0\n---\nok",
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn malformed_existing_result_is_not_accepted_as_completion_evidence() {
         let directory = temporary_directory("invalid-result");
         std::fs::write(
@@ -380,6 +411,26 @@ mod tests {
         let loaded = load_request(&path).unwrap();
 
         assert_eq!(loaded.args, record.args);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn spool_principal_overrides_untrusted_requester_field() {
+        use crate::principal::PrincipalId;
+
+        let directory = temporary_directory("principal-owner");
+        let request_path = directory.join("req-owned");
+        std::fs::write(
+            &request_path,
+            "id=req-owned\nrequester=forged\ncommand=help\nstatus=pending\n",
+        )
+        .unwrap();
+
+        let request = load_request(&request_path).unwrap();
+        let owned = request.with_principal(PrincipalId::parse("resident").unwrap());
+
+        assert_eq!(owned.principal.as_str(), "resident");
+        assert_eq!(owned.request.claimed_requester.as_deref(), Some("forged"));
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

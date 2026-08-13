@@ -5,6 +5,8 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 /bin/busybox chmod 1777 /tmp
+/bin/busybox mkdir -p /sbin
+/bin/busybox ln -sf /bin/busybox /sbin/modprobe
 
 load_kernel_module() {
     module_name=$1
@@ -29,29 +31,30 @@ ifconfig lo up
 echo "[init] mounting persistent /var..."
 if mount -t ext4 /dev/vda /var || mount -t ext2 /dev/vda /var; then
     echo "[init] persistent /var mounted"
-    mkdir -p /var/boos/requests /var/boos/results /var/log
+    mkdir -p /var/boos/principals /var/log
     /bin/busybox sync
 else
     echo "[init] no persistent disk, using tmpfs"
-    mkdir -p /var/boos/requests /var/boos/results /var/log
+    mkdir -p /var/boos/principals /var/log
 fi
 
 echo "[init] network: configuring virtio interface"
-ifconfig eth0 up
-udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
-IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
-if [ -z "$IP" ]; then
-    echo "[init] DHCP failed; applying QEMU user-network fallback"
-    ifconfig eth0 10.0.2.15 netmask 255.255.255.0
-    /bin/busybox route add default gw 10.0.2.2
-    echo "nameserver 10.0.2.3" > /etc/resolv.conf
+IP=""
+if ifconfig eth0 up 2>/dev/null; then
+    udhcpc -q -t 3 -n -i eth0 -s /usr/share/udhcpc/default.script 2>/dev/null || true
     IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+    if [ -z "$IP" ]; then
+        echo "[init] DHCP failed; applying QEMU user-network fallback"
+        ifconfig eth0 10.0.2.15 netmask 255.255.255.0
+        /bin/busybox route add default gw 10.0.2.2
+        echo "nameserver 10.0.2.3" > /etc/resolv.conf
+        IP=$(ifconfig eth0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | cut -d' ' -f1)
+    fi
 fi
 if [ -n "$IP" ]; then
     echo "[init] network up: eth0=$IP"
 else
-    echo "[init] fatal: network configuration failed"
-    exit 1
+    echo "[init] network unavailable; continuing offline"
 fi
 
 echo "================================================"
@@ -66,17 +69,35 @@ if ! /bin/busybox grep -q '^boos-gateway:' /etc/passwd ||
     exit 1
 fi
 
-# The supervisor deliberately drops gateway privileges through BusyBox su.
-# Expose only that required applet instead of relying on the base initramfs.
+# The supervisor drops each configured daemon to its Linux principal.
+# Expose only the required applet instead of relying on the base initramfs.
 /bin/busybox ln -sf busybox /bin/su
 
-mkdir -p /var/boos/memory /var/boos/daemons
-: > /var/boos/last-cmd
+mkdir -p \
+    /var/boos/principals/resident/requests \
+    /var/boos/principals/resident/results \
+    /var/boos/principals/resident/memory \
+    /var/boos/principals/debug/requests \
+    /var/boos/principals/debug/results \
+    /var/boos/principals/debug/memory \
+    /var/boos/daemons
 : > /var/log/boos.log
-/bin/busybox chown -R boos-gateway:boos-gateway /var/boos/requests /var/boos/memory
-/bin/busybox chown boos-gateway:boos-gateway /var/boos/last-cmd /var/log/boos.log
-/bin/busybox chmod 750 /var/boos/requests /var/boos/memory
-/bin/busybox chmod 640 /var/boos/last-cmd /var/log/boos.log
+/bin/busybox chown -R boos-agent:boos-agent /var/boos/principals/resident
+/bin/busybox chown -R boos-gateway:boos-gateway /var/boos/principals/debug
+/bin/busybox chmod 700 \
+    /var/boos/principals/resident \
+    /var/boos/principals/resident/requests \
+    /var/boos/principals/resident/memory \
+    /var/boos/principals/debug \
+    /var/boos/principals/debug/requests \
+    /var/boos/principals/debug/memory
+# The processor runs as root; setgid keeps published 0640 results readable by
+# the owning principal without making result directories cross-readable.
+/bin/busybox chmod 2700 \
+    /var/boos/principals/resident/results \
+    /var/boos/principals/debug/results
+/bin/busybox chown boos-gateway:boos-gateway /var/log/boos.log
+/bin/busybox chmod 640 /var/log/boos.log
 
 if [ -f /etc/boos/agent.conf ]; then
     /bin/busybox chown boos-gateway:boos-gateway /etc/boos/agent.conf

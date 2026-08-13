@@ -49,7 +49,7 @@ fn write_log_bytes(line: &[u8]) {
     let _ = f.write_all(payload);
 
     let n = LOG_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    if n % LOG_ROTATE_CHECK_EVERY == 0 {
+    if n.is_multiple_of(LOG_ROTATE_CHECK_EVERY) {
         if let Ok(meta) = f.metadata() {
             maybe_rotate_log(meta.len());
         }
@@ -115,10 +115,10 @@ pub fn json_escape(s: &str) -> String {
 pub fn log_event(component: &str, event: &str, fields: &[(&str, &str)]) {
     let trace = get_trace_level();
 
-    if trace == TraceLevel::Quiet {
-        if event != "denied" && event != "error" && event != "unknown" && event != "config" {
-            return;
-        }
+    if trace == TraceLevel::Quiet
+        && !matches!(event, "denied" | "error" | "unknown" | "config")
+    {
+        return;
     }
 
     let ts = uptime_secs();
@@ -133,8 +133,8 @@ pub fn log_event(component: &str, event: &str, fields: &[(&str, &str)]) {
     write_log_bytes(line.as_bytes());
 }
 
-/// Log a permitted command execution. Respects trace level and includes prev_command in verbose.
-pub fn log_allowed(command: &str, desc: &str) {
+/// Log a permitted command execution with its authenticated principal.
+pub fn log_allowed(command: &str, desc: &str, principal: &str, previous_command: &str) {
     let trace = get_trace_level();
     let component = "boos-exec";
     let ts = uptime_secs();
@@ -143,20 +143,20 @@ pub fn log_allowed(command: &str, desc: &str) {
         return; // allowed events are not logged in quiet mode
     }
 
-    let prev = if trace == TraceLevel::Verbose {
-        std::fs::read_to_string(config::LAST_CMD_FILE).unwrap_or_default()
-    } else {
-        String::new()
-    };
-
-    let prev = prev.trim();
     let mut line = format!(
-        "{{\"ts\":{:.3},\"component\":\"{}\",\"event\":\"allowed\",\"command\":\"{}\",\"desc\":\"{}\"",
-        ts, component, json_escape(command), json_escape(desc)
+        "{{\"ts\":{:.3},\"component\":\"{}\",\"event\":\"allowed\",\"principal\":\"{}\",\"command\":\"{}\",\"desc\":\"{}\"",
+        ts,
+        component,
+        json_escape(principal),
+        json_escape(command),
+        json_escape(desc)
     );
 
-    if trace == TraceLevel::Verbose && !prev.is_empty() {
-        line.push_str(&format!(",\"prev\":\"{}\"", json_escape(prev)));
+    if trace == TraceLevel::Verbose && !previous_command.is_empty() {
+        line.push_str(&format!(
+            ",\"prev\":\"{}\"",
+            json_escape(previous_command)
+        ));
     }
     line.push('}');
     line.push('\n');

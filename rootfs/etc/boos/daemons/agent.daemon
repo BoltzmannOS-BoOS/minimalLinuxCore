@@ -1,0 +1,7 @@
+name=agent
+exec=/bin/boos-agent resident
+user=boos-agent
+principal=resident
+restart=always
+enabled=1
+description=resident AI principal lifecycle

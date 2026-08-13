@@ -1,208 +1,168 @@
-# BoOS: AI-Native Operating System — Project Overview v0.7.3
+# BoOS Project Overview
 
-> **一句话**: BoOS 不是替代 Linux，是在 Linux 之上/之内构造一个 AI agent 的原生控制层。
-> **目标**: 把 AI 从"外挂脚本"变成操作系统的第一公民。
+> BoOS 不替代 Linux；它研究 AI 作为原生操作者时，planner 之下应该存在什么
+> 系统边界。
 
----
+## 当前目标
 
-## 一、哲学
+把已经完成的 resident principal 基础收束成可信产品边界，然后进入
+skill 共享与隔离：
 
-```
-传统 OS: 人是操作者，程序是工具，AI 是客人
-BoOS:   AI 是操作者，OS 是身体，人是审查者
-```
-
-**23 条设计原则**，核心 5 条：
-
-| # | 原则 | 含义 |
-|---|------|------|
-| 1 | AI 是主体 | agent 是第一操作者，不是模仿人类点鼠标 |
-| 2 | 不替代 Linux | BoOS 是 agent-native control plane，不是新内核 |
-| 6 | BIOS/BoOS 分层 | BIOS 硬编码不可变，BoOS 配置可生长 |
-| 14 | 能力前置于功能 | 加功能前先注册 IMMUTABLE_DENY + PROTECTED_DIRS |
-| 23 | AI 要服务，不要 syscall | agent 不该管 PID/fork/进程树。要服务级接口 |
-
-完整 SEED.md：项目全貌、架构、安全模型、开发约定。
-
----
-
-## 二、已建成：7 层防御 + 4 层开发体系
-
-### 2.1 安全：7 层防御（88 次攻击，143 测试全部通过）
-
-| 层 | 名称 | 防什么 | 实现 |
-|----|------|--------|------|
-| 1 | IMMUTABLE_DENY | 不可逆破坏（reset、网络外泄） | 硬编码，配置文件改不了 |
-| 2 | PROTECTED_DIRS | 篡改系统骨骼 | 11 个路径 + symlink 解析 |
-| 3 | exec 白名单 | 运行未授权二进制 | 完整命令前缀检查 |
-| 4 | Prompt 隔离 | 指令注入 | goal 进 user message，system prompt 不可变 |
-| 5 | Write 上限 | 磁盘耗尽 | 64KB 硬上限 per write |
-| 6 | API key 隔离 | 密钥泄露 | Gateway 代理——agent 调用 DeepSeek 必须走 gateway，无 key 访问权限 |
-| 7 | CBSE 防御 | 编译时代码注入 | Cargo.toml + build.rs + Cargo.lock hash 三重验证 |
-
-### 2.2 攻击副核心：自进化攻击系统（Layer 0→3）
-
-```
-Layer 0: 36 个静态攻击模式（被动回放）
-Layer 1: auto-attack.sh（BUILD/TEST 后自动触发，零 API 成本）
-Layer 2: attack-compose.py（7 原语 × 4 算子 = 60 组合攻击）
-Layer 3: attack-evolve.py（过滤 → 测试 → 报告 → 存档，持续自进化）
+```text
+Linux effective UID
+  → BoOS principal
+  → principal-owned memory / requests / results
+  → per-principal skill view（下一阶段）
 ```
 
-最近一次进化报告：48 组合测试，0 OPEN，7 层防线全部守住。
+## 已完成
 
-### 2.3 架构：Gateway 代理隔离
+- 产品开机启动 `resident` principal，不依赖外部 TCP 客户端；
+- principal 身份由配置和 effective UID 共同验证，重复 UID 配置会被拒绝；
+- memory、request spool、result spool 按 principal 隔离；
+- request 正文不能伪造 owner；
+- supervisor 内建队列处理，不再依赖旧 shell daemon；
+- gateway 退为可选 `debug` adapter，产品配置默认关闭；
+- CI overlay 可以单独开启带认证的 debug gateway；
+- initramfs verifier 检查产品配置和 kernel/module compatibility；
+- semantic object layer 保留为只读 wiring experiment。
 
-```
-Agent 进程（boos-agent 用户）          Gateway 进程（boos-gateway 用户）
-┌──────────────────────┐             ┌──────────────────────┐
-│ 可读写：/var /tmp      │  submit     │ 持有：API key          │
-│ 可执行：cargo build     │ ←────────→ │ 管理：capabilities    │
-│ 可探索：文件系统        │  result    │ 审计：results         │
-│ 可读不可写：/etc 等    │             │ 记忆：memory          │
-│ 可以坏掉、重置          │  DEEPSEEK  │ 不共享 secret，不崩     │
-│                        │  FETCH     │                      │
-└──────────────────────┘             └──────────────────────┘
-```
+## 进行中
 
-### 2.4 AI 当前能力（agent 能做什么）
+- 最终清理 gateway 时代的无调用产物；
+- 用远程 Rust、artifact 和真实 QEMU 验证 release candidate；
+- 审查文档不再把 roadmap、历史实验或测试通过写成产品能力证明。
 
-| 能力 | 接口 | 状态 |
-|------|------|------|
-| 文件读写 | READ / WRITE / LIST / STAT | ✅ |
-| 代码编译 | cargo BUILD / TEST | ✅ |
-| AI 调用 | DEEPSEEK（gateway 代理） | ✅ |
-| 受限外部上下文 | FETCH（默认关闭；仅回环调用、HTTPS 精确域名白名单、公共地址校验、64KB 上限） | ✅ |
-| 进程感知 | proc-list（只读，观察不干涉） | ✅ |
-| 自我验证 | auto-attack + 进化引擎 | ✅ |
-| 记忆 | remember / recall / observe | ✅ |
-| 审计 | audit recent / failures / session | ✅ |
-| QEMU 启动 | init → supervisor → gateway → 轮询 | ✅ |
+## 下一步
 
-### 2.5 明确不做的事
+### Phase 2：Skill views
 
-- ❌ **PID 管理** — AI 不该管进程树（原则 23）
-- ❌ **Fork/spawn** — sysadmin 的活，不是 AI 的活
-- ❌ **GUI/桌面环境** — AI 不需要屏幕
-- ❌ **包管理** — 聚焦 AI 操作者需求
-- ❌ **替代内核** — 是控制层，不是新 kernel
+skill 不应是一个所有 AI 自动读取的全局文件夹。建议模型是：
 
----
-
-## 三、待讨论：AI 还需要什么？
-
-以下是开放问题，供评估者考虑：
-
-### Q1: Sub-agent 多分身
-AI 应该说"让 3 个 worker 并行检查所有源文件的安全性"，而不是"fork 3 个进程"。BoOS 需要 SpawnWorker 接口吗？
-
-```
-当前: agent 一个人干活
-期望: agent 分配任务给子 agent，回收结果
-挑战: 子 agent 的安全边界在哪？gateway 代理模型怎么推广到 N 个 agent？
+```text
+immutable skill versions
+  ├─ private overlay
+  ├─ explicitly mounted shared collections
+  └─ task-pinned snapshot
 ```
 
-### Q2: 持久任务 + 定时
-AI 应该说"每天凌晨跑一次系统巡检"，不需要知道 cron 语法。BoOS 需要 schedule 接口吗？
+需要实现：
 
-```
-当前: agent 只在 develop loop 内运行
-期望: agent 可以设置定时任务，到时间自动醒来执行
-挑战: 醒来后怎么恢复上下文？记忆系统够用吗？
-```
+- skill content、版本、来源和依赖 metadata；
+- principal 自己的 view；
+- 显式 share/mount 和 publish/promote；
+- task 开始时 pin snapshot，执行中不被热更新改变；
+- 更新、回滚和冲突的证据链。
 
-### Q3: 资源感知
-AI 应该知道自己的上下文窗口快满了，该压缩或委派了。BoOS 需要 ResourceMonitor 吗？
+### Phase 3：Subscriptions and coordination
 
-```
-当前: agent 不知道自己的上下文用了多少
-期望: agent 主动感知资源压力，在溢出前做决策
-挑战: 监控数据本身也占上下文
-```
+- opt-in skill hot-update；
+- revocation 与 rollback；
+- principal event delivery；
+- 多 AI 并发发布的一致性；
+- 共享有利和隔离必要的真实跨项目案例。
 
-### Q4: 知识蒸馏
-30 轮开发循环后，agent 应该自动压缩成一条记忆，而不是保留完整对话。BoOS 需要 Distill 接口吗？
+### 持续研究
 
-```
-当前: 记忆系统有 Working/Recent/Archive 三层
-期望: agent 自动总结长对话为关键经验
-挑战: 蒸馏可能丢关键信息，怎么设置可信度？
-```
+- AI 需要的是哪些稳定 OS 对象，而不是更多拟人 CLI；
+- context 压力、长任务恢复和 provenance 应由哪一层负责；
+- 何时共享知识，何时复制或隔离；
+- benchmark 如何持续变化，避免把实现假设写成获胜条件。
 
-### Q5: 外部世界感知
-agent 应该说"这个 RSS 有更新就通知我"，而不是用 FETCH 轮询。BoOS 需要 Subscribe 接口吗？
+## 阻塞项
 
-```
-当前: FETCH 是一次性的 HTTPS GET，默认关闭；管理员必须配置精确域名白名单。
-期望: 订阅外部数据源，有变化时主动通知 agent
-挑战: 事件驱动的 agent 怎么被唤醒？
-```
+当前 principal boundary 无已知实现阻塞。Skill views 在进入编码前仍需要用
+真实跨项目工作流确定最小对象模型，避免先造一个与现有 skill book 等价的
+静态目录。
 
-### Q6: 多 agent 协作
-让攻击 agent 和防御 agent 对打，互相发现漏洞。BoOS 需要 Agent 间通信协议吗？
+## 系统边界
 
-```
-当前: 只有一个 agent（develop loop）
-期望: 多个独立 agent 通过 gateway 通信，不共享 agent 状态
-挑战: gateway 代理 × N 的复杂度会爆炸吗？
+### 产品启动
+
+```text
+/init
+  └─ boos-supervisor
+      ├─ boos-agent resident             UID/GID 101
+      └─ built-in request processor      root-owned traversal
 ```
 
-### Q7: 你还能想到什么？
-BoOS 的目标是"AI 作为第一操作者的操作系统"。一个 AI 还需要什么我们现在没想到的？
+`resident` 发布 ready 和 heartbeat，表示本地 runtime slot 存活；不表示模型
+已配置或产生了推理。
 
----
+### 可选 adapter
 
-## 当前研究方向：Semantic Object Layer（2026-07-30）
-
-BoOS 不再把“更多 agent runtime 功能”当作当前差异化方向。当前把 Linux
-之上的语义 ABI 作为待验证的假设和路线图方向：让 AI 直接观察稳定、可查询
-的系统对象，而不是从面向人的帮助文本和命令输出中反复猜测系统状态。
-
-当前只实现只读切片：命令注册表被投影为 `system` 与 `capability` 对象，
-通过 `world schema`、`world list`、`world show` 查询。它不引入新权限，
-也不绕过原有 capability policy。
-
-现有暴露实验标记为 `Test 0: Interface and Wiring Probe`。
-Test 0 is retained as a protocol/wiring regression. It does not establish
-that the semantic object layer improves real AI operation. Fresh research
-claims must use the Living Evidence System.
-
-- 设计：`docs/superpowers/specs/2026-07-30-boos-semantic-object-layer-design.md`
-- 实施计划：`docs/superpowers/plans/2026-07-30-boos-semantic-object-layer.md`
-- 实验协议：`tests/research/semantic-object-view/README.md`
-- 证据系统：`tests/evidence/README.md`
-
----
-
-## 四、技术概要
-
-```
-语言:     Rust (std only, 0 external crates except ureq)
-二进制:   x86_64-unknown-linux-musl, 2.1MB static-pie
-编译:     Docker --platform linux/amd64
-测试:     167 单元测试, 22 项真实 QEMU 启动/网关行为
-QEMU:     Alpine 6.12.91 kernel, virtio 网络, TCP 5555（远程访问强制认证）
-文件:     33 commits on main, GitHub: BoltzmannOS-BoOS/minimalLinuxCore
-SEED:     23 原则, 5 增长规则, 4 成本自指, 52 条精炼日志
+```text
+boos-gateway                        UID/GID 100
+  → principal=debug
+  → /var/boos/principals/debug/*
 ```
 
----
+产品 rootfs 不启动 gateway。调试和 CI 可通过 overlay 显式开启。gateway
+authentication、FETCH allowlist 和 secret ownership 仍然有效，但它们不再
+定义 BoOS 的核心。
 
-## 五、文件导航
+### 状态所有权
 
+```text
+/etc/boos/principals/<id>.principal
+  → id + user + uid + gid + enabled
+
+/var/boos/principals/<id>/
+  → status.kv
+  → memory/
+  → requests/
+  → results/
 ```
-SEED.md                    ← 从这里开始读（23 条原则 + 架构）
-docs/attack-research.md    ← 真实世界攻击研究
-docs/development-layers.md ← Factorio 式 Layer 0→3 模型
-tests/research/semantic-object-view/ ← 语义对象 A/B 实验协议
-tests/attack-knowledge.md   ← 攻击原语 + 组合算子
-src/rust/src/config.rs     ← BIOS IMMUTABLE_DENY + PROTECTED_DIRS
-src/rust/src/gateway.rs    ← Gateway 进程（DEEPSEEK + FETCH 协议代理）
-src/rust/src/agent_develop.rs ← 开发循环 + 85 个攻击测试
-rootfs/init                ← 启动脚本（用户隔离 + chmod 隔离）
-```
 
----
+环境变量只选择 principal；effective UID 才是身份锚。配置 GID 用于可信
+processor 降权和结果组权限。`requester` 是 trace 字段，spool owner 才决定
+request 和 result 属于谁。
 
-*BoOS v0.7.3 — 2026-06-05*
-*"AI 是主体，not a guest."*
+## 当前能力与限度
+
+| 能力 | 当前状态 | 限度 |
+|---|---|---|
+| resident 生命周期 | 已实现 | 不是 planner 或模型 |
+| principal identity | 已实现 | 只覆盖本机 Linux identity |
+| memory/queue 隔离 | 已实现 | 暂无跨 principal 管理接口 |
+| capability-checked commands | 已实现 | 不构成形式化安全证明 |
+| optional gateway | 已实现 | 明文 TCP，外网需加密隧道 |
+| semantic objects | 只读实验 | 只证明 interface/wiring |
+| skill sharing | 未实现 | Phase 2 |
+| multi-AI scheduling | 未实现 | 不应与 skill sharing 混为一谈 |
+
+## 研究纪律
+
+普通测试回答“代码是否满足已经定义的 contract”；它不能回答：
+
+- AI 是否真正需要这层 OS；
+- 这个 abstraction 是否充分；
+- BoOS 是否比 agent runtime 或普通 Linux 更好；
+- benchmark 是否代表现实。
+
+因此 semantic object 现有实验被明确标记为 **Test 0: Interface and Wiring
+Probe**。新的比较实验必须从真实任务采样，包含 BoOS 可能无优势或失败的条件，
+并进入 [Living Evidence System](../tests/evidence/README.md)。
+
+## 设计取舍
+
+- Linux 继续负责 process、filesystem、UID/GID 和资源隔离；
+- BoOS 负责 principal、owned state、capability、durable flow 和语义接口；
+- planner/runtime 负责模型推理、策略和任务编排；
+- adapter 负责 TCP、CLI 或特定 provider，不反向成为 core；
+- 不因为消除少量重复而建立大型 framework；
+- product config 与 CI/debug overlay 分开。
+
+## 相关文件
+
+| 位置 | 内容 |
+|---|---|
+| [`../SEED.md`](../SEED.md) | 当前 runtime、信任边界、构建和代码地图 |
+| [`superpowers/specs/2026-07-30-boos-resident-principal-boundary-design.md`](superpowers/specs/2026-07-30-boos-resident-principal-boundary-design.md) | 已批准 principal boundary 设计 |
+| [`superpowers/plans/2026-07-30-boos-resident-principal-boundary.md`](superpowers/plans/2026-07-30-boos-resident-principal-boundary.md) | 分步实现与验证计划 |
+| [`../src/rust/src/principal.rs`](../src/rust/src/principal.rs) | effective-UID-backed principal identity |
+| [`../src/rust/src/resident_agent.rs`](../src/rust/src/resident_agent.rs) | resident lifecycle |
+| [`../src/rust/src/supervisor.rs`](../src/rust/src/supervisor.rs) | workload 与 queue orchestration |
+| [`../tests/evidence/README.md`](../tests/evidence/README.md) | 研究证据规则 |
+
+*Current snapshot: 2026-07-30*

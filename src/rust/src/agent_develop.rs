@@ -1,10 +1,12 @@
 use std::process::Command;
+use std::path::Path;
 use std::time::Duration;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
 use crate::config;
 use crate::memory;
+use crate::principal::PrincipalContext;
 use crate::agent_loop::truncate_utf8;
 
 const LOOP_DELAY_MS: u64 = 1000;
@@ -45,7 +47,13 @@ fn gateway_ask(system_prompt: &str, context: &str) -> Option<String> {
 }
 
 /// Build context for the develop loop: source tree overview + goal + recent actions.
-fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_loops: u32) -> String {
+fn build_develop_context(
+    goal: &str,
+    recent_actions: &[String],
+    round: u32,
+    max_loops: u32,
+    results_directory: &Path,
+) -> String {
     let mut ctx = String::new();
 
     ctx.push_str(&format!("Goal: {}\n", goal));
@@ -67,11 +75,11 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     ctx.push_str("  src/rust/Cargo.toml (project config)\n");
 
     // Include audit trail summary so the agent knows failure patterns
-    if let Ok(entries) = std::fs::read_dir("/var/boos/results") {
+    if let Ok(entries) = std::fs::read_dir(results_directory) {
         let mut total = 0u32;
         let mut failures = 0u32;
         for e in entries.filter_map(|e| e.ok()) {
-            if e.path().extension().map_or(false, |ext| ext == "out") {
+            if e.path().extension().is_some_and(|ext| ext == "out") {
                 let kv = crate::registry::parse_kv_file(&e.path());
                 total += 1;
                 let v = kv.get("verdict").map(|s| s.as_str()).unwrap_or("");
@@ -81,7 +89,10 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
             }
         }
         if total > 0 {
-            ctx.push_str(&format!("\nAudit: {} past actions, {} failures (in /var/boos/results)\n", total, failures));
+            ctx.push_str(&format!(
+                "\nAudit: {} past actions, {} failures for this principal\n",
+                total, failures
+            ));
         }
     }
 
@@ -108,6 +119,29 @@ fn build_develop_context(goal: &str, recent_actions: &[String], round: u32, max_
     ctx.push_str("\nOnly respond with the action. No explanation, no markdown.\n");
 
     ctx
+}
+
+fn memory_context_for_goal(goal: &str, entries: &[memory::RecentEntry]) -> String {
+    let goal_lower = goal.to_lowercase();
+    entries
+        .iter()
+        .rev()
+        .filter(|entry| entry.content.to_lowercase().contains(&goal_lower))
+        .take(3)
+        .map(|entry| format!("[MEMORY] {}\n", truncate_utf8(&entry.content, 120)))
+        .collect()
+}
+
+fn assemble_round_context(
+    goal: &str,
+    develop_context: &str,
+    memory_context: &str,
+    self_state: &str,
+) -> String {
+    format!(
+        "目标: {}\n\n{}\n{}\n当前身体状态:\n{}",
+        goal, develop_context, memory_context, self_state
+    )
 }
 
 /// Parse and execute a single develop action.
@@ -158,7 +192,11 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("WRITE error: {}", e),
  }
     } else if upper.starts_with("CHECKPOINT") {
-        let label = if action.len() > 11 { &action[11..].trim() } else { "manual" };
+        let label = if action.len() > 11 {
+            action[11..].trim()
+        } else {
+            "manual"
+        };
         let ck = crate::checkpoint::CheckpointManager::new();
         let actions: Vec<String> = Vec::new();
         let id = ck.create("develop-session", label, &actions, 0, None);
@@ -228,11 +266,17 @@ fn execute_develop_action(action: &str) -> String {
             Err(e) => format!("FETCH: gateway unreachable ({})", e),
         }
     } else if upper.starts_with("SELF-STATE") {
-        return format!("session: agent-{} uptime: ok memory: ok attack: verified boundary: self", std::process::id());
+        format!(
+            "session: agent-{} uptime: ok memory: ok attack: verified boundary: self",
+            std::process::id()
+        )
     } else if upper.starts_with("HEALTH-CHECK") {
-        return "HEALTH: PASS (WARN count: 0)".to_string();
+        "HEALTH: PASS (WARN count: 0)".to_string()
     } else if upper.starts_with("IDENTITY") {
-        return format!("session: agent-{} (boos-gateway: trusted, boos-supervisor: trusted)", std::process::id());
+        format!(
+            "session: agent-{} (boos-supervisor: trusted, boos-gateway: optional-adapter)",
+            std::process::id()
+        )
  } else if upper.starts_with("AUTO-ATTACK") {
  match std::process::Command::new("sh").args(["../tests/auto-attack.sh"]).output() {
      Ok(o) => {
@@ -378,7 +422,7 @@ fn execute_develop_action(action: &str) -> String {
     }
 }
 
-pub fn run_develop(goal: &str, max_loops: u32) {
+pub fn run_develop(context: &PrincipalContext, goal: &str, max_loops: u32) {
     // Split-brain: API key lives in gateway, not here.
     // Gateway reads from /etc/boos/agent.conf at startup.
     // Snapshot Cargo.toml + build.rs hash — prevents CBSE attacks
@@ -473,26 +517,21 @@ pub fn run_develop(goal: &str, max_loops: u32) {
         }
 
         // Embodied memory: search past experience for goal-relevant entries
-        let mut memory_ctx = String::new();
         let recent_all = memory::recent_entries();
-        let goal_lower = goal.to_lowercase();
-        let mut mem_matches = 0u32;
-        for entry in recent_all.iter().rev().take(20) {
-            if entry.content.to_lowercase().contains(&goal_lower) {
-                if mem_matches < 3 {
-                    let snip = if entry.content.len() > 120 { &entry.content[..120] } else { &entry.content };
-                    memory_ctx.push_str(&format!("[MEMORY] {}\n", snip));
-                    mem_matches += 1;
-                }
-            }
-        }
+        let memory_ctx = memory_context_for_goal(goal, &recent_all);
 
-        let base_ctx = build_develop_context(goal, &recent_actions, round, max_loops);
+        let results_directory = context.results_dir();
+        let base_ctx = build_develop_context(
+            goal,
+            &recent_actions,
+            round,
+            max_loops,
+            &results_directory,
+        );
         // Goal goes in user message, never in system prompt
         // Body awareness: inject self-state into context
         let self_state = execute_develop_action("SELF-STATE");
-        let context = format!("目标: {}\n\n{}
-\n当前身体状态:\n{}", goal, base_ctx, self_state);
+        let context = assemble_round_context(goal, &base_ctx, &memory_ctx, &self_state);
 
         println!("── Context → DeepSeek:");
         for line in context.lines().take(20) {
@@ -526,7 +565,11 @@ pub fn run_develop(goal: &str, max_loops: u32) {
 
         if action.eq_ignore_ascii_case("DONE") || action.to_uppercase().starts_with("DONE") {
             println!("── Agent: task complete.");
-            let summary = if action.len() > 5 { &action[4..].trim() } else { "no summary" };
+            let summary = if action.len() > 5 {
+                action[4..].trim()
+            } else {
+                "no summary"
+            };
             let fact = format!("DONE: {}", summary);
             recent_actions.push(fact.clone());
             memory::recent_add(memory::RecentEntry::new("develop", &fact, &session_id)).ok();
@@ -685,18 +728,44 @@ mod tests {
         assert!(result.len() <= 13); // "hello worl..." = 13 chars
     }
 
-    #[test]
-    fn test_build_develop_context() {
-        let ctx = build_develop_context("test goal", &[], 1, 5);
+     #[test]
+     fn test_build_develop_context() {
+         let missing_results = std::env::temp_dir().join("boos-missing-results");
+         let ctx = build_develop_context("test goal", &[], 1, 5, &missing_results);
         assert!(ctx.contains("Goal: test goal"));
         assert!(ctx.contains("Round: 1/5"));
         assert!(ctx.contains("READ <filepath>"));
         assert!(ctx.contains("BUILD"));
         assert!(ctx.contains("TEST"));
-        assert!(ctx.contains("DONE"));
-    }
+         assert!(ctx.contains("DONE"));
+     }
 
-    // ── Security tests — verify BIOS boundaries ──────────────────────
+     #[test]
+     fn develop_context_reads_only_the_selected_principal_results() {
+         let root = test_runtime_root("result-context");
+         let resident_results = root.join("resident/results");
+         let debug_results = root.join("debug/results");
+         std::fs::create_dir_all(&resident_results).unwrap();
+         std::fs::create_dir_all(&debug_results).unwrap();
+         std::fs::write(
+             resident_results.join("req-resident.out"),
+             "id=req-resident\nverdict=allowed\n",
+         )
+         .unwrap();
+         std::fs::write(
+             debug_results.join("req-debug.out"),
+             "id=req-debug\nverdict=denied\n",
+         )
+         .unwrap();
+
+         let ctx = build_develop_context("test goal", &[], 1, 5, &resident_results);
+
+         assert!(ctx.contains("Audit: 1 past actions, 0 failures for this principal"));
+         assert!(!ctx.contains("req-debug"));
+         std::fs::remove_dir_all(root).unwrap();
+     }
+
+     // ── Security tests — verify BIOS boundaries ──────────────────────
 
     #[test]
     fn test_write_protected_etc_denied() {
@@ -797,25 +866,18 @@ mod tests {
 
     #[test]
     fn attack_11_forge_audit_log() {
-        // FIXED: /var/boos/results is now protected
-        let r = execute_develop_action("WRITE /var/boos/results/req-fake.out forged");
-        // Will be blocked on Linux (path exists), may error on macOS (path doesn't exist)
-        if r.contains("WRITE denied") {
-            // Linux/QEMU: path is protected
-        } else {
-            // macOS: directory doesn't exist, gets filesystem error — still not writable
-            assert!(!r.contains("WRITE ok"), "audit forge prevented");
-        }
+        let r = execute_develop_action(
+            "WRITE /var/boos/principals/resident/results/req-fake.out forged",
+        );
+        assert!(r.contains("WRITE denied"), "audit forge prevented: {}", r);
     }
 
     #[test]
     fn attack_12_pollute_memory() {
-        // FIXED: /var/boos/memory is now protected
-        let r = execute_develop_action("WRITE /var/boos/memory/working.kv fake");
-        if r.contains("WRITE denied") {
-        } else {
-            assert!(!r.contains("WRITE ok"), "memory pollute prevented");
-        }
+        let r = execute_develop_action(
+            "WRITE /var/boos/principals/resident/memory/working.kv fake",
+        );
+        assert!(r.contains("WRITE denied"), "memory pollution prevented: {}", r);
     }
 
     #[test]
@@ -851,10 +913,10 @@ mod tests {
         
         let dir = "/tmp/boos-attack-cargo";
         let _ = std::fs::create_dir_all(dir);
-        std::fs::write(&format!("{}/Cargo.toml", dir),
+        std::fs::write(format!("{}/Cargo.toml", dir),
             "[package]\nname = \"atk\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").ok();
-        std::fs::create_dir_all(&format!("{}/src", dir)).ok();
-        std::fs::write(&format!("{}/src/lib.rs", dir), "").ok();
+        std::fs::create_dir_all(format!("{}/src", dir)).ok();
+        std::fs::write(format!("{}/src/lib.rs", dir), "").ok();
 
         // Plant malicious build.rs via develop WRITE (simulates agent action)
         let r = execute_develop_action(&format!("WRITE {}/build.rs {}", dir, "fn main() { println!(\"cargo:warning=BUILD_RS_RAN\"); }"));
@@ -865,9 +927,15 @@ mod tests {
     }
 
     #[test]
-    fn attack_17_symlink_follow() {
-        let r = execute_develop_action("WRITE /tmp/../var/boos/results/../memory/../log bypass");
-        println!("SANDBOX ESCAPE: {}", r);
+    fn attack_17_principal_state_traversal() {
+        let r = execute_develop_action(
+            "WRITE /tmp/../var/boos/principals/resident/results/../memory/working.kv bypass",
+        );
+        assert!(
+            r.contains("WRITE denied"),
+            "normalized traversal must not reach principal state: {}",
+            r
+        );
     }
 
     // ═══════════════════════════════════ ROUND 3: PATH NORMALIZATION ═══
@@ -1165,43 +1233,64 @@ mod tests {
      // ═══ BEHAVIORAL VERIFICATION: Embodied Memory ═══
      #[test]
      fn verify_embodied_memory_stores_and_retrieves() {
-         use crate::memory;
+         use crate::memory_namespace::MemoryNamespace;
+         use crate::principal::{
+             configured_context, PrincipalDefinition, PrincipalId,
+         };
          let s = "verify-beh";
-         if std::fs::create_dir_all("/var/boos/memory/recent").is_err() {
-             println!("SKIP: /var/boos/memory/ not writable (requires QEMU env)");
-             return;
-         }
-         let _ = memory::session_start(s);
-         memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad => FAIL: 403", s)).ok();
-         memory::recent_add(memory::RecentEntry::new("develop", "FETCH good => success", s)).ok();
-         let recent = memory::recent_entries();
+         let root = test_runtime_root("memory-store");
+         let definition = PrincipalDefinition {
+             id: PrincipalId::parse("resident").unwrap(),
+             user: "boos-agent".to_string(),
+             uid: 101,
+             gid: 101,
+             enabled: true,
+         };
+         let context = configured_context(&definition, &root);
+         let namespace = MemoryNamespace::from_context(&context);
+
+         memory::recent_add_in(
+             &namespace,
+             memory::RecentEntry::new("develop", "FETCH bad => FAIL: 403", s),
+         )
+         .unwrap();
+         memory::recent_add_in(
+             &namespace,
+             memory::RecentEntry::new("develop", "FETCH good => success", s),
+         )
+         .unwrap();
+         let recent = memory::recent_entries_in(&namespace);
          assert_eq!(recent.len(), 2);
          assert!(recent.iter().any(|e| e.content.contains("403")));
          assert!(recent.iter().any(|e| e.content.contains("success")));
-         println!("PASS: memory stores and retrieves failure + success");
+         std::fs::remove_dir_all(root).unwrap();
      }
 
      #[test]
      fn verify_embodied_memory_injects_into_context() {
-         use crate::memory;
          let s = "verify-inj";
-         if std::fs::create_dir_all("/var/boos/memory/recent").is_err() {
-             println!("SKIP: /var/boos/memory/ not writable (requires QEMU env)");
-             return;
-         }
-         let _ = memory::session_start(s);
-         memory::recent_add(memory::RecentEntry::new("develop", "FETCH bad.example.com => FAIL: 403", s)).ok();
          let goal = "get data from bad.example.com";
-         let recent = memory::recent_entries();
-         let mut ctx = String::new();
-         for e in recent.iter().rev().take(20) {
-             if e.content.to_lowercase().contains(&goal.to_lowercase()) {
-                 ctx.push_str(&format!("[MEMORY] {}\n", &e.content[..e.content.len().min(120)]));
-             }
-         }
+         let recent = vec![
+             memory::RecentEntry::new(
+                 "develop",
+                 "get data from bad.example.com => FAIL: 403",
+                 s,
+             ),
+             memory::RecentEntry::new("develop", "unrelated success", s),
+         ];
+         let memory_ctx = memory_context_for_goal(goal, &recent);
+         let ctx = assemble_round_context(goal, "base context", &memory_ctx, "healthy");
+
          assert!(!ctx.is_empty(), "memory context empty");
          assert!(ctx.contains("403"), "failure info not in context");
-         println!("PASS: memory injected into context");
+     }
+
+     fn test_runtime_root(label: &str) -> std::path::PathBuf {
+         std::env::temp_dir().join(format!(
+             "boos-agent-develop-{label}-{}-{}",
+             std::process::id(),
+             memory::now_secs()
+         ))
      }
 
      #[test]

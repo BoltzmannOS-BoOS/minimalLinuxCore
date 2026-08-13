@@ -1,0 +1,5 @@
+id=debug
+user=boos-gateway
+uid=100
+gid=100
+enabled=1

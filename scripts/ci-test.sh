@@ -10,12 +10,15 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 GATEWAY_PORT=15555  # offset from default 5555 to avoid conflicts
+PRODUCT_INITRAMFS=build/initramfs.cpio.gz
 CI_INITRAMFS=build/ci-initramfs.cpio.gz
 CI_GATEWAY_TOKEN_FILE=build/ci-gateway-token
 QEMU_PID=""
 
-if [ ! -f "$CI_INITRAMFS" ] || [ ! -f "$CI_GATEWAY_TOKEN_FILE" ]; then
-    echo "Authenticated CI initramfs or token is missing"
+if [ ! -f "$PRODUCT_INITRAMFS" ] ||
+   [ ! -f "$CI_INITRAMFS" ] ||
+   [ ! -f "$CI_GATEWAY_TOKEN_FILE" ]; then
+    echo "Product or authenticated CI initramfs/token is missing"
     exit 1
 fi
 CI_GATEWAY_TOKEN=$(cat "$CI_GATEWAY_TOKEN_FILE")
@@ -27,10 +30,45 @@ cleanup() {
         wait "$QEMU_PID" 2>/dev/null || true
     fi
     if [ "$cleanup_status" -eq 0 ]; then
-        rm -f build/ci-qemu.log
+        rm -f build/ci-offline-qemu.log build/ci-qemu.log
     fi
 }
 trap cleanup EXIT
+
+echo "=== Starting product QEMU without a network device ==="
+qemu-system-x86_64 \
+  -kernel build/vmlinuz \
+  -initrd "$PRODUCT_INITRAMFS" \
+  -append "console=ttyS0 rdinit=/init" \
+  -nic none \
+  -nographic \
+  -no-reboot \
+  > build/ci-offline-qemu.log 2>&1 &
+QEMU_PID=$!
+
+for i in $(seq 1 30); do
+    if grep -Fq "resident_ready principal=resident" build/ci-offline-qemu.log; then
+        echo "Offline resident principal is ready (attempt $i)."
+        break
+    fi
+    if ! kill -0 "$QEMU_PID" 2>/dev/null || [ "$i" -eq 30 ]; then
+        echo "TIMEOUT: product resident did not become ready offline"
+        tail -200 build/ci-offline-qemu.log
+        exit 1
+    fi
+    sleep 1
+done
+
+if ! grep -Fq "[init] network unavailable; continuing offline" \
+    build/ci-offline-qemu.log; then
+    echo "Product did not report the expected offline boot state"
+    tail -200 build/ci-offline-qemu.log
+    exit 1
+fi
+
+kill "$QEMU_PID" 2>/dev/null || true
+wait "$QEMU_PID" 2>/dev/null || true
+QEMU_PID=""
 
 echo "=== Starting QEMU ==="
 qemu-system-x86_64 \
@@ -44,6 +82,20 @@ qemu-system-x86_64 \
   -no-reboot \
   > build/ci-qemu.log 2>&1 &
 QEMU_PID=$!
+
+echo "Waiting for resident principal readiness..."
+for i in $(seq 1 30); do
+    if grep -Fq "resident_ready principal=resident" build/ci-qemu.log; then
+        echo "Resident principal is ready (attempt $i)."
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "TIMEOUT: resident principal did not become ready"
+        tail -200 build/ci-qemu.log
+        exit 1
+    fi
+    sleep 1
+done
 
 echo "Waiting for gateway on port ${GATEWAY_PORT}..."
 for i in $(seq 1 30); do
@@ -104,6 +156,7 @@ echo "=== Running integration tests ==="
 
 test_boot_log "[init] persistent /var mounted" "persistent /var"
 test_boot_log "[init] gateway token protected" "gateway token protected"
+test_boot_log "resident_ready principal=resident" "resident principal ready"
 
 printf "  %-25s " "unauthenticated rejected"
 unauthenticated_output=$(
@@ -133,8 +186,8 @@ test_cmd "remember ci-key ci-val" "Remembered"      "remember"
 test_cmd "recall ci-key"     "ci-val"               "recall"
 test_cmd "session-status"    "Session"              "session status"
 test_cmd "session-end"       "ended"                "session end"
-test_cmd "result nonexistent" "No result"           "result (missing)"
-test_cmd "daemons"           "running\|stopped\|disabled" "daemons"
+test_cmd "result req-nonexistent" "No result"       "result (missing)"
+test_cmd "daemons"           "agent: running"        "resident still running"
 test_cmd "audit summary"     "Total actions"        "audit summary"
 test_cmd "log"               "gateway"              "log"
 test_cmd "shell"             "denied"               "shell (denied)"

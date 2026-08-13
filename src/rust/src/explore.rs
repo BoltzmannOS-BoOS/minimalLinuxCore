@@ -332,7 +332,7 @@ pub fn run_explore(bold: bool) {
     // Write report to file
     let report_path = format!("/var/boos/explore-report-{}.txt", total_start);
     let mut report = String::new();
-    report.push_str(&format!("BoOS Autonomous Exploration Report\n"));
+    report.push_str("BoOS Autonomous Exploration Report\n");
     report.push_str(&format!("Session: {}\n", session_id));
     report.push_str(&format!("Duration: {}s\n", duration));
     report.push_str(&format!("Total: {} tried, {} succeeded, {} failed\n\n", result.total_tried, result.succeeded, result.failed));

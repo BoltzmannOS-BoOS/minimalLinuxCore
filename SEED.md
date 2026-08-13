@@ -1,249 +1,258 @@
 # BoOS — Seed
 
-BoOS 是一个极简 Linux 环境，给 AI 大模型（DeepSeek）一个可以操作的操作系统界面。
-AI 能读文件、写文件、执行命令、编译代码、记住事情。
-BoOS 在 QEMU 里跑，用 initramfs + BusyBox + 一个 Rust 二进制。
+BoOS 是运行在 Linux 之上的 AI 原生控制层。它不重做内核，也不试图取代
+Hermes、OpenClaw 之类的 planner/runtime；它研究 planner 之下本应由系统
+负责的部分：AI 身份、状态所有权、能力边界、持久请求与结果，以及未来的
+skill 共享和隔离。
 
-这本文档是给新人（或新 agent session）的入口。读完应该能理解项目全貌并开始写代码。
+这份文档描述当前可运行的系统，不把历史实验或 roadmap 写成已实现能力。
 
----
+## 当前边界
+
+产品镜像启动后，不等待外部客户端：
+
+```text
+/init
+  └─ boos-supervisor
+      ├─ boos-agent resident
+      │   └─ 建立 session，原子发布 ready/heartbeat
+      └─ 内建 request processor
+```
+
+默认 resident 进程是一个 AI principal 的常驻运行槽，不是完整 LLM planner。
+它证明系统能在没有 TCP、宿主机客户端或模型 API 的情况下建立 AI 所有的身份
+和状态。`ready` 只表示本地生命周期与接口存活。
+
+TCP gateway 仍被打包，但产品配置默认 `enabled=0`。CI 使用临时 overlay
+开启 gateway，并把它绑定到独立的 `debug` principal；gateway 不是启动依赖。
 
 ## 物理形态
 
-```
-QEMU 虚拟机（x86_64）
-├── Alpine 6.12 内核
-├── initramfs（每次构建重新打包）
-│   ├── /init                    → shell 启动脚本，拉起 supervisor
-│   └── /bin/
-│       ├── boos                 → 唯一的 Rust 静态二进制（musl，~585KB）
-│       ├── boos-exec            → 符号链接到 boos（命令调度器）
-│       ├── boos-submit          → 符号链接（请求提交器）
-│       ├── boos-process         → 符号链接（请求处理器）
-│       ├── boos-gateway         → 符号链接（TCP 网关，端口 5555）
-│       ├── boos-supervisor      → 符号链接（守护进程管理器）
-│       ├── boos-shell           → 符号链接（交互命令行）
-│       ├── boos-agent           → 符号链接（AI 自主循环）
-│       └── busybox              → 基础 Linux 工具
+```text
+QEMU 虚拟机
+├── 与模块匹配的 Linux 内核
+├── initramfs
+│   ├── /init
+│   ├── /bin/boos                    Rust 静态 multicall 二进制
+│   ├── /bin/boos-{agent,exec,...}   指向 boos 的符号链接
+│   ├── /bin/busybox
 │   └── /etc/boos/
-│       ├── commands/*.cmd       → 38 个命令注册文件（key=value 格式）
-│       ├── capabilities.conf    → 权限开关（allow_*=1）
-│       ├── daemons/*.daemon     → 守护进程定义
-│       └── agent.conf           → DeepSeek API key（gitignore）
-└── /var（64MB ext2 持久磁盘）
-    ├── boos/requests/           → 待处理请求文件
-    ├── boos/results/            → 执行结果文件（*.out）
-    ├── boos/memory/             → AI 3 层记忆系统
-    └── log/boos.log             → JSON Lines 操作日志
+│       ├── commands/*.cmd
+│       ├── capabilities.conf
+│       ├── principals/*.principal
+│       └── daemons/*.daemon
+└── 持久 /var
+    ├── boos/principals/resident/
+    ├── boos/principals/debug/
+    └── log/boos.log
 ```
+
+每个 principal 的运行目录为：
+
+```text
+/var/boos/principals/<id>/
+├── status.kv
+├── memory/
+│   ├── working.kv
+│   ├── recent/
+│   └── archive/
+├── requests/
+└── results/
+```
+
+旧的全局 `/var/boos/{memory,requests,results}` 不会被静默迁移。系统无法可靠
+判断旧共享数据属于谁，自动归属会破坏隔离语义。
+
+## 身份与信任
+
+principal 定义位于 `/etc/boos/principals/*.principal`：
+
+```text
+id=resident
+user=boos-agent
+uid=101
+gid=101
+enabled=1
+```
+
+`BOOS_PRINCIPAL_ID` 只是选择器，不是授权凭证。Rust runtime 同时验证：
+
+1. ID 语法合法；
+2. 定义存在且启用；
+3. 当前进程的 effective UID 与定义相符，且不同 principal 不能配置重复 UID；
+4. 配置 GID 用于可信 supervisor/processor 的降权和结果组权限；
+5. processor 子进程会清除 root 的 supplementary groups。
+
+验证失败时，所有有状态命令 fail closed。兼容变量 `BOOS_AGENT_ID` 仅在主变量
+缺失时使用，也必须通过相同的 effective UID 验证。
+
+请求记录中的 `requester` 只用于追踪。请求属于哪个 principal，由它所在的
+spool 决定；root processor 可以遍历所有已启用 spool，但结果仍写回原
+principal 的目录。
 
 ## 多调用二进制
 
-17 个 Rust 模块，编译成一个二进制 `boos`。`main.rs` 读 `argv[0]` 来分发：
+`main.rs` 按 `argv[0]` 分发：
 
-```
-argv[0]          → 调用的模块
-──────────          ──────────
-boos-exec        → exec.rs       命令调度 + 权限检查
-boos-submit      → submit.rs     创建请求文件
-boos-process     → process.rs    读取请求 → 执行 → 写结果
-boos-gateway     → gateway.rs    TCP 监听 :5555 + 代理 DeepSeek API
-boos-supervisor  → supervisor.rs 启动/监控/重启守护进程
-boos-shell       → shell.rs      交互式命令行
-boos-agent       → agent.rs      AI 自主循环入口
-```
+| 入口 | 责任 |
+|---|---|
+| `boos-agent` | resident 生命周期；显式进入历史 agent 实验 |
+| `boos-supervisor` | 启动、监控 workload；内建队列轮询 |
+| `boos-exec` | 命令注册、能力检查与执行 |
+| `boos-submit` | 向当前 principal 原子发布请求 |
+| `boos-process` | 处理所有启用 principal 的 spool |
+| `boos-shell` | 本地交互适配器 |
+| `boos-gateway` | 可选 TCP 调试和模型代理适配器 |
 
-每个模块只依赖 `config.rs`（常量）、`log.rs`（日志）、`registry.rs`（命令解析）。
+代码按责任拆分：principal、memory namespace、queue record、atomic publish、
+locking、gateway policy 等是独立边界，flow 模块只组合这些能力。
 
-## 一次命令的完整路径
+## 一次命令的路径
 
-```
-外部 AI / agent loop
-    │
-    │ TCP :5555（或 boos-shell 本地调用）
-    ▼
-boos-gateway / boos-shell
-    │
-    │ 调 /bin/boos-exec <command> [args]
-    ▼
-boos-exec (main.rs → exec.rs)
-    │
-    ├── 1. registry::find_command(name)        查命令注册表
-    ├── 2. config::IMMUTABLE_DENY              编译期封锁（reset 等不可逆操作）
-    ├── 3. registry::is_enabled(flag)          读 capabilities.conf
-    └── 4. run_builtin() / 外部二进制           执行
-    │
-    ▼
-结果写回（直接输出或通过 submit/process 流水线）
+直接执行：
+
+```text
+resident workload / local shell / optional gateway
+  → boos-exec
+  → command registry
+  → immutable deny + capability policy
+  → builtin 或白名单外部程序
+  → stdout/stderr + audit log
 ```
 
-如果走 submit 流水线：
-```
-boos-submit → 创 /var/boos/requests/req-{id}
-    │
-boos-process → 读取请求 → boos-exec → 创 /var/boos/results/req-{id}.out
-    │
-boos-submit --wait → 轮询结果文件 → 返回
-```
+持久队列：
 
-## 行车记录仪
-
-三个数据源记录所有行为：
-
-| 数据源 | 位置 | 记录什么 | 完整度 |
-|--------|------|----------|--------|
-| 操作日志 | `/var/log/boos.log` | JSON 行事件流 | 所有 boos-exec 命令的允许/拒绝/错误 |
-| 结果档案 | `/var/boos/results/*.out` | 每次请求的完整记录 | 命令+参数+判定+耗时+输出+session_id |
-| 记忆流 | `/var/boos/memory/recent/` | Agent 的观察和行动记录 | agent loop/develop 的自主行为 |
-
-查询命令：
-- `audit timeline [n]` — 按时间排列最近 n 条操作记录
-- `audit session <id>` — 过滤单个 session
-- `audit failures` — 只看失败/拒绝的操作
-- `audit summary` — 统计（总数、通过率）
-
-注意：`audit timeline` 目前只读取 result 文件。日志和记忆流可单独查看（`log` 命令和 `recall` 命令），尚未合并到 timeline 中。
-
-## 两种 AI 运行模式
-
-### 模式 A：外部 AI 操控（ai-client.py）
-Python 脚本在宿主机跑，把命令注册表转成 OpenAI tool definitions。
-AI 通过 TCP 连 gateway，发命令，收结果。
-AI 不知道自己运行在 BoOS 里——它只是调工具。
-
-### 模式 B：AI 住在系统里（boos-agent loop / develop）
-Agent 进程在 QEMU 内启动，循环：
-1. 通过 gateway 调 DeepSeek：\"下一步该干什么？\"
-2. DeepSeek 回复一个命令名
-3. 调 boos-exec 执行
-4. 结果写入 memory
-5. 下一轮
-
-`boos-agent loop`：探索未知系统，100+ 条预设好奇心命令。
-`boos-agent develop`：读源码→写文件→编译→测试→自动攻击→循环。
-
-## 安全模型（7 层，从硬到软）
-
-```
-1. 编译期封锁（config.rs IMMUTABLE_DENY）
-   只有改源码+重新编译才能绕过。目前只锁：
-   - allow_reset（清除所有状态不可逆）
-   - allow_net_write（agent 不能向外发数据）
-   - allow_proc_kill_system（不能杀 gateway/supervisor/init）
-
-2. 路径保护（config.rs PROTECTED_DIRS）
-   11 个目录，write-file 拒绝写入。
-   词法规范化（.. // /// 大小写），但不检查符号链接。
-
-3. capabilities.conf
-   每个命令有 enable_flag，文件在 /etc/boos/ 下（agent 能读不能写）。
-
-4. exec 白名单（config.rs EXEC_ALLOWLIST）
-   exec 命令只能运行 cargo build / cargo test / cargo --version。
-
-5. 编译产物哈希（CARGO_TOML_HASH）
-   agent 不能改 Cargo.toml / build.rs / Cargo.lock。改了 BUILD 拒绝。
-
-6. 写入上限（MAX_WRITE_BYTES = 64KB）
-   单次写入不可超过 64KB。
-
-7. Gateway 代理
-   DeepSeek API key 只存在 gateway 进程。Agent 调 API 必须走 TCP gateway。
-   已知不足：agent 仍可通过 read-file 读 key 文件（PROTECTED_DIRS 不管读）。
+```text
+current PrincipalContext
+  → boos-submit
+  → /var/boos/principals/<id>/requests/req-*
+  → root supervisor 内建 processor
+  → boos-exec
+  → /var/boos/principals/<id>/results/req-*.out
 ```
 
-## 开发命令
+发布请求、结果和 resident 状态均采用临时文件加 rename。processor 使用锁
+避免同一请求被并发重复处理。result 文件只对 root 与所属 principal group
+可读。
+
+## AI 运行方式
+
+### 产品默认：resident
+
+```text
+boos-agent
+boos-agent resident
+```
+
+两者都进入相同常驻生命周期，不启动 gateway，不自动调用模型。
+
+### 可选适配器：gateway
+
+gateway 用于调试、历史客户端和模型 API 代理。没有 token 时只绑定 loopback；
+配置非空 token 后，远程客户端必须先 `AUTH`。协议本身是明文 TCP，跨不可信
+网络必须再使用加密隧道。`FETCH` 默认关闭，开启时仅允许精确列出的 HTTPS
+公共地址。
+
+### 历史实验
+
+`boos-agent explore`、`loop`、`develop` 仍可显式调用，用于复现实验。它们
+不是产品启动路径，也不代表当前 BoOS 的架构中心。
+
+## 安全边界
+
+- Linux effective UID 是 principal 身份锚点；配置 GID 用于降权和文件组权限。
+- 每个 principal 的 memory、requests、results 目录互相隔离。
+- 编译期 immutable deny 封锁不可逆能力。
+- `/etc/boos` 的 capability policy 决定命令可用性。
+- 文件访问会规范化路径并保护系统目录。
+- 外部进程执行受白名单和资源边界约束。
+- 写入有大小上限，持久记录采用原子发布。
+- gateway secret 由独立 `boos-gateway` 用户持有。
+- product rootfs 不启动网络 gateway。
+
+这些机制缩小攻击面，但不等于形式化安全证明。攻击回归与研究结论必须分开：
+普通测试证明已定义的边界没有回归；它不能证明 BoOS 的假设充分或优于其他
+系统。
+
+## 构建与验证
+
+本机资源不足时应在远程 builder 或一次性容器中完成编译，避免把 target
+目录写回开发机。
 
 ```bash
-# 编译（必须 0 warning）
-cd src/rust && cargo build --release
-
-# 测试（当前 126 passed，全部含 assert）
+cd src/rust
 cargo test
+cargo build --release --target x86_64-unknown-linux-musl
 
-# QEMU 集成测试
-# Guest 内已验证：
-#   - boos-exec help/status 输出正确
-#   - gateway TCP nc 127.0.0.1:5555 正常
-#   - agent loop 启动 + gateway 协议握手成功（API key 无效时报 401 并重试）
-# macOS host→guest port-forward 未通（QEMU 限制），需 Linux 主机或 GitHub Actions CI
-
-# Docker 交叉编译 x86_64 musl（用于 QEMU）：
-docker run --rm --platform linux/amd64 -v $PWD:/work -w /work/src/rust rust:alpine \
-  sh -c 'apk add --no-cache musl-dev && cargo build --release'
-
-# 打包：
-cp src/rust/target/release/boos rootfs/bin/boos
-cd rootfs/bin && for n in boos-exec boos-process boos-submit boos-gateway boos-supervisor boos-shell boos-agent; do ln -sf boos "$n"; done
-cd ../.. && cd rootfs && find . ! -name '.DS_Store' | cpio -H newc -o | gzip > ../build/initramfs.cpio.gz
-
-# 启动 QEMU（需要内核 build/vmlinuz + 持久盘 build/var.img）：
-qemu-system-x86_64 -kernel build/vmlinuz -initrd build/initramfs.cpio.gz \
-  -append "console=ttyS0 rdinit=/init" \
-  -drive file=build/var.img,format=raw,if=virtio,cache=directsync \
-  -netdev user,id=net0,hostfwd=tcp::15555-:5555 -device virtio-net,netdev=net0 \
-  -nographic -no-reboot
-
-# GitHub Actions CI: .github/workflows/ci.yml + scripts/ci-test.sh
+cd ../..
+commit=$(git rev-parse HEAD)
+source_date_epoch=$(git show -s --format=%ct "$commit")
+scripts/assemble-initramfs.sh \
+  /path/to/matching/initramfs-virt \
+  rootfs \
+  src/rust/target/x86_64-unknown-linux-musl/release/boos \
+  build/initramfs.cpio.gz \
+  "$commit" \
+  "$source_date_epoch"
+tests/boot/verify-initramfs.sh \
+  build/initramfs.cpio.gz \
+  rootfs/init \
+  src/rust/target/x86_64-unknown-linux-musl/release/boos \
+  /path/to/matching/vmlinuz-virt \
+  "$commit"
 ```
 
-## 关键约定
+验证分三层：
 
-1. **所有配置是 key=value**——不用 JSON/TOML/serde。`registry::parse_kv_file()` 是通用解析器。
-2. **原子写入**：先写 `.tmp` 临时文件，再 `rename` 到目标路径。
-3. **退出码**：0=允许, 1=拒绝, 2=错误, 3=未知。`process.rs` 把进程退出码映射为 verdict。
-4. **日志格式**：每行一个 JSON 对象。`log::log_event()` / `log::log_allowed()` / `log::log_denied()`。
-5. **不引入新依赖**：std + ureq 是目前上限。不用 serde、tokio、clap。
-6. **安全改动先写攻击测试**：证明能破 → 修 → 测试通过。
-7. **API key 不进代码仓库**：`/etc/boos/agent.conf` 被 .gitignore。
+1. Rust 单元/行为测试：身份解析、越权失败、namespace、并发与错误边界；
+2. initramfs artifact verifier：必需文件、配置、内核与 module tree 一致性；
+3. 真实 QEMU：resident ready、持久 `/var`、产品无 gateway、CI debug
+   overlay 的认证与隔离。
 
-## 记忆系统（3 层）
+不要用 `nc -z` 证明 guest gateway 存活：QEMU host forwarding 可能在 guest
+没有 listener 时仍接受 host TCP。必须发送真实协议并收到预期响应。
 
-```
-Working Memory → /var/boos/memory/working.kv
-  一个 session 一个文件。存目标、上下文、活跃事实。
-  写盘：{session_id}.tmp → rename → working.kv（原子）
+## 开发约定
 
-Recent Memory → /var/boos/memory/recent/*.kv
-  环形缓冲，100 条上限。计数器文件 .counter 驱动轮转。
-  每条一个文件，按序号命名。
+1. 配置和内部 wire record 使用有边界的 `key=value` 格式。
+2. 状态先写同目录临时文件，再原子 rename。
+3. 外部输入、环境变量和文件内容都不可信。
+4. 授权来自 trusted boundary，不来自请求正文。
+5. 修改安全行为前先建立能失败的行为测试。
+6. 不用预设 BoOS 优势的 benchmark 代替充分性验证。
+7. API key、token 和生产配置不进入仓库。
+8. product 与 CI overlay 分离；测试便利配置不能渗入产品 rootfs。
 
-Archive Memory → /var/boos/memory/archive/*.mem
-  持久化键值对。文件名 = sanitize_filename(key)。
-  支持搜索（全文匹配 key/value/tags）和按 key 删除。
-```
+## 代码导航
 
-## 源码地图
+| 文件 | 责任 |
+|---|---|
+| `src/rust/src/principal.rs` | principal 定义、effective UID 验证、运行路径 |
+| `src/rust/src/resident_agent.rs` | ready 与 heartbeat 生命周期 |
+| `src/rust/src/memory.rs` | working/recent/archive 行为 |
+| `src/rust/src/memory_namespace.rs` | principal memory 路径边界 |
+| `src/rust/src/submit.rs` | 当前 principal 的请求提交 flow |
+| `src/rust/src/process.rs` | 跨 spool 处理、owner 传播 |
+| `src/rust/src/queue_record.rs` | request/result wire record |
+| `src/rust/src/request_publish.rs` | 原子请求发布 |
+| `src/rust/src/queue_lock.rs` | 并发处理锁 |
+| `src/rust/src/supervisor.rs` | workload 生命周期与内建 processor |
+| `src/rust/src/gateway.rs` | 可选 TCP/model adapter |
+| `src/rust/src/gateway_policy.rs` | gateway 认证与网络策略 |
+| `src/rust/src/world*.rs` | semantic object 只读实验 |
+| `rootfs/init` | mount、用户和目录权限、启动 |
 
-| 文件 | 行数 | 角色 |
-|------|------|------|
-| main.rs | 41 | argv[0] 多调用分发 |
-| config.rs | 162 | 常量、路径规范化、保护检查 |
-| log.rs | 249 | JSON 行日志、转义、轮转 |
-| registry.rs | 244 | 命令注册表解析、参数定义 |
-| exec.rs | 851 | 命令调度器 + 37 个内置处理器 |
-| exec_file.rs | 149 | 文件操作内置处理器（read/write/list/stat/exec） |
-| process.rs | 305 | 请求队列处理器、并发 stdout/stderr 读取 |
-| submit.rs | 218 | 请求文件创建、唯一 ID 生成 |
-| gateway.rs | 311 | TCP 网关、DEEPSEEK/FETCH 协议代理 |
-| supervisor.rs | 375 | 守护进程管理、健康检查、配置热加载 |
-| shell.rs | 80 | 简单交互式 REPL |
-| agent.rs | 544 | Agent 循环入口、memory 命令实现 |
-| agent_loop.rs | 270 | 自主探索循环 |
-| agent_develop.rs | 1470 | 自主开发循环（READ→WRITE→BUILD→TEST）+ 攻击测试 |
-| explore.rs | 371 | 无 LLM 的静态好奇心探索 |
-| memory.rs | 575 | 3 层记忆系统（working/recent/archive） |
-| checkpoint.rs | 124 | Agent Git——保存/恢复/分支 |
-| **总计** | **6,339** | |
+## 下一阶段：skill 共享与隔离
 
-## 已知问题
+当前代码只建立了可信 principal 边界，尚未实现共享 skill pool。下一阶段应把
+skill 视为带版本和来源的不可变对象，为每个 principal 提供一个 view：
 
-1. ~~`read-file` 无路径限制~~ → PROTECTED_READ_PATHS
-2. ~~`is_protected_path` 符号链接~~ → canonicalize()
-3. ~~gateway write timeout~~ → set_write_timeout(30s)
-4. ~~FETCH 直连绕过~~ → 走 gateway
-5. ~~panic handler~~ → set_hook + catch_unwind
-6. 持久盘需要 Alpine virt 内核 + 模块 initramfs（virtio_blk + ext4 不在裸核中）
-   - 解决方案：合并 Alpine 的 initramfs-virt 到 BoOS initramfs 中
-   - 已在 QEMU 中验证 crash→重启→数据完整存活
+- private overlay；
+- 显式挂载的 shared collection；
+- 每个任务固定 snapshot，避免执行中热更新；
+- publish/promote、provenance、dependency、rollback；
+- opt-in subscription，而不是全局强制同步。
 
+这既允许多个 AI 共通一部分 skill，也允许项目、身份和任务按需隔离。更完整
+设计见
+[resident principal boundary design](docs/superpowers/specs/2026-07-30-boos-resident-principal-boundary-design.md)。

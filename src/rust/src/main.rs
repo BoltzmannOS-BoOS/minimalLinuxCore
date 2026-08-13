@@ -2,6 +2,7 @@ use std::env;
 use std::path::Path;
 
 mod config;
+mod principal;
 mod checkpoint;
 mod log;
 mod registry;
@@ -23,6 +24,7 @@ mod shell;
 mod memory_namespace;
 mod memory;
 mod agent;
+mod resident_agent;
 mod explore;
 mod agent_loop;
 mod agent_develop;

@@ -2,9 +2,6 @@ pub const LOG_FILE: &str = "/var/log/boos.log";
 pub const CAP_FILE: &str = "/etc/boos/capabilities.conf";
 pub const CMD_DIR: &str = "/etc/boos/commands";
 pub const DEBUG_CONF: &str = "/etc/boos/debug.conf";
-pub const REQ_DIR: &str = "/var/boos/requests";
-pub const RESULT_DIR: &str = "/var/boos/results";
-pub const LAST_CMD_FILE: &str = "/var/boos/last-cmd";
 pub const UPTIME_FILE: &str = "/proc/uptime";
 
 pub const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1MB
@@ -39,8 +36,8 @@ pub const MAX_LOG_BACKUPS: u32 = 2;
 // On a single-user local QEMU port-forward this is more than enough.
 pub const MAX_GATEWAY_THREADS: usize = 64;
 
-// Agent memory system paths
-pub const MEMORY_DIR: &str = "/var/boos/memory";
+pub const PRINCIPAL_CONFIG_DIR: &str = "/etc/boos/principals";
+pub const PRINCIPAL_RUNTIME_DIR: &str = "/var/boos/principals";
 
 pub fn is_valid_runtime_id(id: &str) -> bool {
     !id.is_empty()
@@ -70,6 +67,8 @@ pub const PROTECTED_DIRS: &[&str] = &[
     "/lib",
     "/boot",
     "/proc",
+    PRINCIPAL_RUNTIME_DIR,
+    // Retain the pre-principal paths as protected during manual migrations.
     "/var/boos/requests",
     "/var/boos/results",
     "/var/boos/memory",
@@ -165,10 +164,25 @@ mod path_tests {
     fn test_is_not_protected_var() {
         // /var itself is NOT protected — agent can create /var/scripts etc
         assert!(!is_protected_path("/var/scripts/myscript.sh"));
-        // But /var/boos/results IS protected (must use submit pipeline)
+        // Legacy shared state remains protected during manual migrations.
         assert!(is_protected_path("/var/boos/results/req-1.out"));
-        // Requests must also enter through submit so metadata cannot be forged.
         assert!(is_protected_path("/var/boos/requests/req-forged"));
+    }
+
+    #[test]
+    fn principal_owned_state_cannot_be_written_through_the_generic_file_api() {
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/results/req-forged.out"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/requests/req-forged"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/memory/working.kv"
+        ));
+        assert!(is_protected_path(
+            "/var/boos/principals/resident/status.kv"
+        ));
     }
 
     #[cfg(unix)]

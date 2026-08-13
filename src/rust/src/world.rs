@@ -155,7 +155,7 @@ pub fn list_objects<'a>(
 
     let mut selected: Vec<&WorldObject> = objects
         .iter()
-        .filter(|object| kind.map_or(true, |wanted| object.kind == wanted))
+        .filter(|object| kind.is_none_or(|wanted| object.kind == wanted))
         .collect();
     selected.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(selected)

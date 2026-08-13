@@ -1,8 +1,8 @@
-use std::env;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::config;
+use crate::principal::{self, PrincipalContext};
 
 #[derive(Debug, Clone)]
 pub struct MemoryNamespace {
@@ -10,6 +10,7 @@ pub struct MemoryNamespace {
 }
 
 impl MemoryNamespace {
+    #[cfg(test)]
     pub fn new(memory_root: &Path, agent_id: Option<&str>) -> io::Result<Self> {
         let root = match agent_id {
             None | Some("default") => memory_root.to_path_buf(),
@@ -22,12 +23,13 @@ impl MemoryNamespace {
     }
 
     pub fn from_environment() -> io::Result<Self> {
-        match env::var("BOOS_AGENT_ID") {
-            Ok(agent_id) => Self::new(Path::new(config::MEMORY_DIR), Some(&agent_id)),
-            Err(env::VarError::NotPresent) => {
-                Self::new(Path::new(config::MEMORY_DIR), None)
-            }
-            Err(env::VarError::NotUnicode(_)) => Err(invalid_namespace_id()),
+        let context = principal::current_context()?;
+        Ok(Self::from_context(&context))
+    }
+
+    pub fn from_context(context: &PrincipalContext) -> Self {
+        Self {
+            root: context.memory_root(),
         }
     }
 
@@ -71,7 +73,37 @@ fn invalid_namespace_id() -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::principal::{
+        resolve_context, PrincipalDefinition, PrincipalId,
+    };
     use std::path::Path;
+
+    fn principal_context(id: &str, uid: u32) -> crate::principal::PrincipalContext {
+        let definition = PrincipalDefinition {
+            id: PrincipalId::parse(id).unwrap(),
+            user: format!("{id}-user"),
+            uid,
+            gid: uid,
+            enabled: true,
+        };
+        resolve_context(&[definition], id, uid, Path::new("/runtime")).unwrap()
+    }
+
+    #[test]
+    fn principal_contexts_never_share_memory_tiers() {
+        let resident = MemoryNamespace::from_context(&principal_context("resident", 101));
+        let debug = MemoryNamespace::from_context(&principal_context("debug", 100));
+
+        assert_ne!(resident.working_path(), debug.working_path());
+        assert_eq!(
+            resident.archive_dir(),
+            Path::new("/runtime/resident/memory/archive")
+        );
+        assert_eq!(
+            debug.recent_dir(),
+            Path::new("/runtime/debug/memory/recent")
+        );
+    }
 
     #[test]
     fn all_memory_tiers_share_the_validated_agent_root() {

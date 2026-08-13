@@ -34,11 +34,11 @@ pub fn run_with_limits(
 
     let stdout = child.stdout.take().ok_or_else(|| {
         terminate_and_reap(&mut child);
-        io::Error::new(io::ErrorKind::Other, "child stdout pipe was not created")
+        io::Error::other("child stdout pipe was not created")
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
         terminate_and_reap(&mut child);
-        io::Error::new(io::ErrorKind::Other, "child stderr pipe was not created")
+        io::Error::other("child stderr pipe was not created")
     })?;
     let stdout_reader = read_stream(stdout, max_stream_bytes);
     let stderr_reader = read_stream(stderr, max_stream_bytes);
@@ -104,9 +104,9 @@ fn read_stream<R: Read + Send + 'static>(
 fn join_stream(
     reader: thread::JoinHandle<io::Result<CapturedStream>>,
 ) -> io::Result<CapturedStream> {
-    reader.join().map_err(|_| {
-        io::Error::new(io::ErrorKind::Other, "child output reader panicked")
-    })?
+    reader
+        .join()
+        .map_err(|_| io::Error::other("child output reader panicked"))?
 }
 
 fn terminate_and_reap(child: &mut Child) {
